@@ -153,6 +153,14 @@ export function installCommand(packageManager) {
   return INSTALL_COMMANDS[packageManager] || INSTALL_COMMANDS.npm;
 }
 
+/** Latest package.json command for the detected dev script (e.g. "vite"). */
+export function devScriptCommand(detection, dir) {
+  const pkg = readJson(path.join(dir, "package.json"));
+  const script = detection?.devScript;
+  if (!script || !pkg?.scripts) return "";
+  return typeof pkg.scripts[script] === "string" ? pkg.scripts[script] : "";
+}
+
 function scriptInvocation(packageManager, script, extraArgs = []) {
   if (!script) return null;
   const args = ["run", script];

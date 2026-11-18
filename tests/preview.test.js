@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import test from "node:test";
-import { deployBranch, makeRepo, request, startApp } from "./helpers.js";
+import { deployBranch, devServerSource, makeRepo, request, startApp } from "./helpers.js";
 
 
 // The port a preview app would use if it ignored Vercio's CLI overrides, e.g.
@@ -188,4 +188,159 @@ test("failed previews expose the dev-server error and the complete log", { timeo
   assert.match(logs.json.log, new RegExp("Port " + BAKED_PORT + " is already in use"));
   // Output flushed while the process exits must be in the snapshot too.
   assert.match(logs.json.log, /Dev server exited early \(code 1\)/);
+});
+
+test("preview worktrees inherit the developer's local env files", { timeout: 120000 }, async (t) => {
+  const repo = makeRepo("env-fixture", {
+    files: {
+      "package.json": JSON.stringify(
+        { name: "env-fixture", private: true, scripts: { dev: "node dev.mjs" } },
+        null,
+        2
+      ),
+      "dev.mjs": devServerSource("env fixture"),
+      ".env": "FROM_BRANCH=1\n",
+    },
+  });
+  // Local-only env files are not committed: they only exist in the working copy.
+  fs.writeFileSync(path.join(repo, ".env"), "FROM_BRANCH=modified-locally\n");
+  fs.writeFileSync(path.join(repo, ".env.local"), "VITE_API_BASE_URL=http://127.0.0.1:9999\n");
+  fs.writeFileSync(path.join(repo, ".env.development.local"), "DEV_ONLY=1\n");
+  fs.writeFileSync(path.join(repo, ".env.example"), "EXAMPLE=1\n");
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  assert.equal(created.status, 201);
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id);
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+
+  const worktreeRoot = path.join(ctx.dataDir, "worktrees", project.id);
+  const worktreePath = path.join(worktreeRoot, fs.readdirSync(worktreeRoot)[0]);
+  // The branch's committed .env wins; gitignored local files are copied in.
+  assert.equal(fs.readFileSync(path.join(worktreePath, ".env"), "utf8"), "FROM_BRANCH=1\n");
+  assert.equal(
+    fs.readFileSync(path.join(worktreePath, ".env.local"), "utf8"),
+    "VITE_API_BASE_URL=http://127.0.0.1:9999\n"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(worktreePath, ".env.development.local"), "utf8"),
+    "DEV_ONLY=1\n"
+  );
+
+  const logs = await request(ctx.base, "GET", "/api/deployments/" + deployment.id + "/logs");
+  assert.match(logs.json.log, /Copied local env files into the worktree:/);
+  assert.match(logs.json.log, /\.env\.local/);
+  assert.match(logs.json.log, /\.env\.development\.local/);
+});
+
+// Minimal stand-in for the Vite CLI so the overlay wiring can be tested without
+// installing dependencies: it honours --port/--host, records its argv and can
+// deliberately reject the generated `--config` overlay.
+function fakeViteShim(rejectOverlay) {
+  const lines = [
+    "#!/usr/bin/env node",
+    'const fs = require("node:fs");',
+    'const http = require("node:http");',
+    "const argv = process.argv.slice(2);",
+    "let port = 5199;",
+    'let host = "127.0.0.1";',
+    'let config = "";',
+    "for (let index = 0; index < argv.length; index += 1) {",
+    "  const arg = argv[index];",
+    '  if (arg === "--port") port = Number(argv[++index]);',
+    '  else if (arg === "--host") host = argv[++index];',
+    '  else if (arg === "--config") config = argv[++index];',
+    "}",
+    'fs.writeFileSync("vite-argv.json", JSON.stringify(argv));',
+  ];
+  if (rejectOverlay) {
+    lines.push('if (config) { console.error("fake vite: cannot load the overlay config"); process.exit(1); }');
+  }
+  lines.push(
+    "const server = http.createServer((req, res) => {",
+    '  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });',
+    '  res.end("<!doctype html><html><body><h1>fake vite</h1></body></html>");',
+    "});",
+    'server.listen(port, host, () => console.log("fake vite listening on " + port));',
+    ""
+  );
+  return lines.join("\n");
+}
+
+function makeFakeViteRepo(name, { rejectOverlay }) {
+  const repo = makeRepo(name, {
+    files: {
+      "package.json": JSON.stringify(
+        { name, private: true, scripts: { dev: "vite" }, devDependencies: { vite: "8.3.0" } },
+        null,
+        2
+      ),
+      "vite.config.mjs": "export default {};\n",
+    },
+  });
+  const binDir = path.join(repo, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const bin = path.join(binDir, "vite");
+  fs.writeFileSync(bin, fakeViteShim(rejectOverlay));
+  fs.chmodSync(bin, 0o755);
+  return repo;
+}
+
+function deployedWorktree(ctx, projectId) {
+  const worktreeRoot = path.join(ctx.dataDir, "worktrees", projectId);
+  return path.join(worktreeRoot, fs.readdirSync(worktreeRoot)[0]);
+}
+
+test("Vite previews fall back to the plain command when the overlay cannot load", { timeout: 120000 }, async (t) => {
+  const repo = makeFakeViteRepo("vite-overlay-fallback", { rejectOverlay: true });
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  assert.equal(created.status, 201);
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id);
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  assert.equal(deployment.framework?.kind, "vite");
+  assert.doesNotMatch(deployment.devCommand, /--config/);
+
+  const page = await fetch("http://127.0.0.1:" + deployment.port + "/");
+  assert.match(await page.text(), /fake vite/);
+
+  const logs = await request(ctx.base, "GET", "/api/deployments/" + deployment.id + "/logs");
+  assert.match(logs.json.log, /Linked node_modules detected; using a Vite config overlay/);
+  assert.match(logs.json.log, /Vite config overlay failed; retrying with the project's dev command/);
+  assert.match(logs.json.log, /\(fallback\)/);
+
+  // The overlay is only a convenience; falling back must not leave it referenced.
+  assert.ok(fs.existsSync(path.join(deployedWorktree(ctx, project.id), ".vercio.vite.config.mjs")));
+});
+
+test("Vite previews use the fs.allow overlay when the project config loads", { timeout: 120000 }, async (t) => {
+  const repo = makeFakeViteRepo("vite-overlay-applied", { rejectOverlay: false });
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  assert.equal(created.status, 201);
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id);
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  assert.match(deployment.devCommand, /--config \.vercio\.vite\.config\.mjs/);
+
+  const worktreePath = deployedWorktree(ctx, project.id);
+  const argv = JSON.parse(fs.readFileSync(path.join(worktreePath, "vite-argv.json"), "utf8"));
+  assert.ok(argv.includes("--config"));
+  assert.equal(argv[argv.indexOf("--config") + 1], ".vercio.vite.config.mjs");
 });

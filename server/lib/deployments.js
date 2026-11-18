@@ -16,11 +16,25 @@ import {
   detectProject,
   devCommand,
   devInstallPlan,
+  devScriptCommand,
 } from "./frameworks.js";
 import { findFreePort, isPortResponding, releasePort, waitForHttp } from "./ports.js";
+import {
+  linkedNodeModulesDir,
+  supportsViteConfigOverlay,
+  writeViteConfigOverlay,
+} from "./vite-overlay.js";
 
 const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 const MAX_LOG_LINES = 4000;
+// Vite (and most dev servers) load `.env`, `.env.local`, `.env.<mode>` and
+// `.env.<mode>.local` from the project root. They are usually gitignored, so a
+// fresh worktree never contains them - and a preview that needs e.g.
+// VITE_API_BASE_URL fails before React mounts. Copy the developer's local env
+// files into the worktree unless the branch itself tracks that file.
+const ENV_FILE_RE = /^\.env(?:\.[A-Za-z0-9_-]+)*$/;
+const ENV_FILE_SKIP_RE = /\.(?:example|sample|template|schema)$/i;
+const MAX_ENV_FILE_BYTES = 512 * 1024;
 const ERROR_HINT_RE =
   /(error|failed|failure|fatal|exception|eaddrinuse|eacces|econnrefused|already in use|not found|cannot|can't|unable|denied|missing|invalid)/i;
 
@@ -326,6 +340,33 @@ export class DeploymentManager {
     this.emitDeployment(deployment);
   }
 
+  async copyLocalEnvFiles(deployment, project, worktreePath) {
+    let entries = [];
+    try {
+      entries = await fs.promises.readdir(project.repoPath);
+    } catch {
+      return;
+    }
+    const copied = [];
+    for (const name of entries) {
+      if (!name.startsWith(".env")) continue;
+      if (!ENV_FILE_RE.test(name) || ENV_FILE_SKIP_RE.test(name)) continue;
+      const source = path.join(project.repoPath, name);
+      const target = path.join(worktreePath, name);
+      try {
+        const info = await fs.promises.stat(source);
+        if (!info.isFile() || info.size > MAX_ENV_FILE_BYTES) continue;
+        // Never override a file the previewed branch commits on purpose.
+        if (fs.existsSync(target)) continue;
+        await fs.promises.copyFile(source, target);
+        copied.push(name);
+      } catch {}
+    }
+    if (copied.length) {
+      this.log(deployment, "Copied local env files into the worktree: " + copied.join(", "));
+    }
+  }
+
   async cleanupBranchWorktrees(project, branchSlug, keepPath) {
     const dir = path.join(this.config.dirs.worktrees, project.id);
     let entries = [];
@@ -420,9 +461,100 @@ export class DeploymentManager {
     }
   }
 
+  devServerAttempts(deployment, detection, worktreePath, command) {
+    const attempts = [{ command: command.command, args: command.args, env: command.env }];
+    if (detection.kind !== "vite") return attempts;
+    // Vite cannot serve files outside its fs.allow roots. With reused (linked)
+    // node_modules every package asset resolves outside the worktree and 403s,
+    // so try an overlay config that widens the allow list; the plain command is
+    // always kept as a fallback for projects whose config cannot be wrapped.
+    const linkedDir = linkedNodeModulesDir(worktreePath);
+    if (!linkedDir) return attempts;
+    const script = devScriptCommand(detection, worktreePath);
+    if (!supportsViteConfigOverlay(script)) return attempts;
+    try {
+      const overlay = writeViteConfigOverlay(worktreePath, [linkedDir]);
+      attempts.unshift({
+        command: command.command,
+        args: [...command.args, "--config", overlay],
+        env: command.env,
+      });
+      this.log(
+        deployment,
+        "Linked node_modules detected; using a Vite config overlay so dependency assets can be served"
+      );
+    } catch (error) {
+      this.log(deployment, "Could not create a Vite config overlay: " + error.message);
+    }
+    return attempts;
+  }
+
+  async startDevServerChild(deployment, worktreePath, attempt, port) {
+    const child = spawn(attempt.command, attempt.args, {
+      cwd: worktreePath,
+      env: { ...process.env, ...attempt.env },
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    this.children.set(deployment.id, child);
+    const childClosed = new Promise((resolve) => child.once("close", resolve));
+
+    let exited = null;
+    child.stdout.on("data", (chunk) => this.appendLog(deployment, chunk.toString()));
+    child.stderr.on("data", (chunk) => this.appendLog(deployment, chunk.toString()));
+    child.on("error", (error) => {
+      exited = { code: -1, signal: null, error };
+      this.log(deployment, "Failed to start dev server: " + error.message);
+    });
+    child.on("exit", (code, signal) => {
+      if (this.children.get(deployment.id) === child) this.children.delete(deployment.id);
+      if (this.stopping.has(deployment.id)) return;
+      if (deployment.status === "ready") {
+        deployment.status = "stopped";
+        deployment.stoppedAt = nowIso();
+        deployment.error = "Dev server exited " + (signal || "with code " + code);
+        releasePort(deployment.port);
+        this.store.markDirty();
+        this.emitDeployment(deployment);
+      } else {
+        exited = { code, signal };
+        this.log(deployment, "Dev server exited early (" + (signal || "code " + code) + ")");
+      }
+    });
+
+    const controller = new AbortController();
+    child.on("exit", () => controller.abort());
+    this.log(deployment, "Waiting for the dev server to come up...");
+    try {
+      await waitForHttp(port, {
+        timeoutMs: this.config.devServerTimeoutMs,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      // Give the child a moment to flush its stdio so the failure carries the
+      // complete output even when we are about to retry with another command.
+      if (child.exitCode === null && child.signalCode === null) {
+        this.killChild(deployment.id);
+      }
+      await settleWithin(childClosed, 750);
+      const detail = this.failureHint(deployment.id);
+      if (exited) {
+        const cause = exited.signal || "code " + exited.code;
+        if (detail) {
+          throw new Error("Dev server exited before it became ready (" + cause + "): " + detail);
+        }
+        throw new Error(
+          "Dev server exited before it became ready (" + cause + "). Check the command and logs above."
+        );
+      }
+      if (detail) throw new Error(error.message + ": " + detail);
+      throw error;
+    }
+    return child;
+  }
+
   async run(deployment, project) {
     let child = null;
-    let childClosed = null;
     try {
       this.setStatus(deployment, "preparing");
       if (!fs.existsSync(path.join(project.repoPath, ".git"))) {
@@ -440,6 +572,7 @@ export class DeploymentManager {
       this.log(deployment, "Creating isolated worktree for " + deployment.branch + " @ " + deployment.shortSha);
       await this.cleanupBranchWorktrees(project, branchSlug, worktreePath);
       await addWorktree(project.repoPath, deployment.commit, worktreePath);
+      await this.copyLocalEnvFiles(deployment, project, worktreePath);
 
       const detection = detectProject(worktreePath);
       deployment.framework = {
@@ -483,66 +616,28 @@ export class DeploymentManager {
       const port = await findFreePort(this.config.previewPortRange, this.activePorts());
       deployment.port = port;
       const command = devCommand(detection, port, worktreePath);
-      deployment.devCommand = [command.command, ...command.args].join(" ");
       this.setStatus(deployment, "starting");
-      this.log(deployment, "$ " + deployment.devCommand + "  (port " + port + ")");
-
-      child = spawn(command.command, command.args, {
-        cwd: worktreePath,
-        env: { ...process.env, ...command.env },
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      this.children.set(deployment.id, child);
-      childClosed = new Promise((resolve) => child.once("close", resolve));
-
-      let exited = null;
-      child.stdout.on("data", (chunk) => this.appendLog(deployment, chunk.toString()));
-      child.stderr.on("data", (chunk) => this.appendLog(deployment, chunk.toString()));
-      child.on("error", (error) => {
-        exited = { code: -1, signal: null, error };
-        this.log(deployment, "Failed to start dev server: " + error.message);
-      });
-      child.on("exit", (code, signal) => {
-        if (this.children.get(deployment.id) === child) this.children.delete(deployment.id);
-        if (this.stopping.has(deployment.id)) return;
-        if (deployment.status === "ready") {
-          deployment.status = "stopped";
-          deployment.stoppedAt = nowIso();
-          deployment.error = "Dev server exited " + (signal || "with code " + code);
-          releasePort(deployment.port);
-          this.store.markDirty();
-          this.emitDeployment(deployment);
-        } else {
-          exited = { code, signal };
-          this.log(deployment, "Dev server exited early (" + (signal || "code " + code) + ")");
-        }
-      });
-
-      const controller = new AbortController();
-      child.on("exit", () => controller.abort());
-      this.log(deployment, "Waiting for the dev server to come up...");
-      try {
-        await waitForHttp(port, {
-          timeoutMs: this.config.devServerTimeoutMs,
-          signal: controller.signal,
-        });
-      } catch (error) {
-        const detail = this.failureHint(deployment.id);
-        if (exited) {
-          const cause = exited.signal || "code " + exited.code;
-          if (detail) {
-            throw new Error("Dev server exited before it became ready (" + cause + "): " + detail);
-          }
-          throw new Error(
-            "Dev server exited before it became ready (" +
-              cause +
-              "). Check the command and logs above."
+      const attempts = this.devServerAttempts(deployment, detection, worktreePath, command);
+      for (let index = 0; index < attempts.length; index += 1) {
+        const attempt = attempts[index];
+        deployment.devCommand = [attempt.command, ...attempt.args].join(" ");
+        this.log(
+          deployment,
+          "$ " + deployment.devCommand + "  (port " + port + ")" + (index > 0 ? "  (fallback)" : "")
+        );
+        try {
+          child = await this.startDevServerChild(deployment, worktreePath, attempt, port);
+          break;
+        } catch (error) {
+          if (index === attempts.length - 1) throw error;
+          this.log(
+            deployment,
+            "Vite config overlay failed; retrying with the project's dev command: " +
+              safeText(error.message).slice(0, 240)
           );
         }
-        if (detail) throw new Error(error.message + ": " + detail);
-        throw error;
       }
+      if (!child) throw new Error("Could not start the dev server");
       if (deployment.status === "error") throw new Error("Preview cancelled");
 
       deployment.status = "ready";
@@ -559,7 +654,7 @@ export class DeploymentManager {
         if (child.exitCode === null && child.signalCode === null) {
           this.killChild(deployment.id);
         }
-        await settleWithin(childClosed, 750);
+        await settleWithin(new Promise((resolve) => child.once("close", resolve)), 750);
       }
       this.fail(deployment, error.message || "Preview failed");
       if (deployment.port) {

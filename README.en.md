@@ -16,7 +16,7 @@ Vercel's frontend collaboration used to mean connecting a GitHub repo to the clo
 - **Product workspace** — editable product brief, rendered README, Markdown notes with tags, pinning, autosave and branch linking, and per-branch discussions.
 - **Framework detection** — Next.js, Vite, Astro, SvelteKit, Remix, Nuxt, CRA, Vue CLI, Gatsby, custom dev servers and static sites get the right port and host flags automatically.
 - **Dependency caching** — cache `node_modules` by `package.json` + lockfile fingerprint; reuse the working copy's dependencies when they match.
-- **Local folder picker** — browse directories on this machine when adding a local project; Git repositories are flagged and the path is filled in for you.
+- **System folder picker** — Browse opens the operating system's own folder chooser (macOS, Windows, Linux) and fills the selected repository path in for you; when no GUI is available it falls back to an in-page browser.
 - **Visible progress** — live logs for worktree preparation, dependency install and dev-server startup; retry after failures, stop previews on demand.
 - **Local-first** — code, branches, product briefs, notes and comments live in `.vercio/` on this machine. Nothing is uploaded.
 - **Chinese / English UI** — auto-detects the browser language and can be switched with the **EN / 中文** control in the top bar. Project content stays in its original language.
@@ -131,6 +131,7 @@ CLI flags: `node server/index.js --port 4001 --host 127.0.0.1 --data-dir ~/.verc
 | GET | `/api/overview` | Dashboard data |
 | GET | `/api/system` | Version, LAN URLs, QR code, settings |
 | GET | `/api/fs/browse?path=&showHidden=` | Folder browser (directory names only, Git repos flagged) |
+| POST | `/api/fs/pick-folder` | Open the system folder dialog on this machine and return `{ path }` or `{ cancelled }` |
 | POST | `/api/projects` | Add a GitHub / local project |
 | POST | `/api/projects/demo` | Load the bundled demo |
 | PATCH | `/api/projects/:id` | Update name, tagline, description, links |
@@ -151,9 +152,9 @@ CLI flags: `node server/index.js --port 4001 --host 127.0.0.1 --data-dir ~/.verc
 npm test
 ~~~
 
-Coverage: Git branch parsing and diffs, project/note/comment APIs, static preview redirects, custom dev-server preview lifecycle and shutdown, concurrent worktree isolation, the folder browser (directories only, Git detection, tilde expansion and error handling), and demo project generation with two real branch previews.
+Coverage: Git branch parsing and diffs, project/note/comment APIs, static preview redirects, custom dev-server preview lifecycle and shutdown, concurrent worktree isolation, the system folder dialog (command construction, cancel/unavailable/invalid-path handling, API delegation), the in-page folder browser (directories only, Git detection, tilde expansion and error handling), and demo project generation with two real branch previews.
 
-Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, autosave a note, edit the brief and settings, add/delete a project, pick a local folder, mobile layouts), light/dark switching with persistence, a 1920px full-width layout, plus typecheck and production build — all with no console errors.
+Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, autosave a note, edit the brief and settings, add/delete a project, pick a local folder through the native chooser and the in-page fallback, mobile layouts), light/dark switching with persistence, a 1920px full-width layout, plus typecheck and production build — all with no console errors.
 
 ## Languages and themes
 
@@ -167,7 +168,7 @@ Verification performed for this build: real Vite project (install → dev server
 - Vercio is designed for **your machine and a trusted LAN**. There is no authentication — never expose port 4000 directly to the public internet. Use a firewall or an authenticated reverse proxy if needed.
 - Preview processes bind to `0.0.0.0`, so devices on the same Wi-Fi can reach preview ports directly.
 - Private GitHub repositories rely on your local Git credentials (SSH key or credential helper). Clone jobs run in the background and can be retried from the project page.
-- The local folder picker lists directories on the machine running Vercio (directory names only, never file contents). Anyone who can reach Vercio on the LAN can see those paths — only run it on trusted networks.
+- The Browse button opens the system folder dialog **on the machine running Vercio** (clicking it from a LAN device still opens the window there). Without a GUI it falls back to the in-page browser, which lists directory names on that machine (never file contents); anyone who can reach Vercio on the LAN can see those names — only run it on trusted networks.
 - The first preview of a stack may take a while to install dependencies; later previews reuse the lockfile cache. Vercio previews via dev servers rather than running production builds (static branches host existing static files).
 - Verified on macOS with Node 25. Node 20.19+/22.12+ should work; Windows path and process-group handling are untested.
 

@@ -4,6 +4,7 @@ import type {
   BrowseListing,
   Comment,
   Deployment,
+  FolderPickResult,
   Note,
   Overview,
   Project,
@@ -69,6 +70,12 @@ export const api = {
   },
   async createDemoProject() {
     return request<{ project: Project }>("/api/projects/demo", { method: "POST" });
+  },
+  async pickFolder(path?: string, prompt?: string) {
+    return request<FolderPickResult>("/api/fs/pick-folder", {
+      method: "POST",
+      body: JSON.stringify({ path: path || undefined, prompt: prompt || undefined }),
+    });
   },
   async browseDirectory(target?: string, options: { showHidden?: boolean } = {}) {
     const params = new URLSearchParams();

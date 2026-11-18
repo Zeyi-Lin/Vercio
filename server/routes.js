@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { browseDirectory } from "./lib/browse.js";
+import { pickFolder } from "./lib/folder-dialog.js";
 import { HttpError, isInside, readJSONBody, sendError, sendJSON, serveStaticFile } from "./lib/http.js";
 import { newId } from "./lib/ids.js";
 import { getSystemInfo } from "./lib/lan.js";
@@ -78,6 +79,7 @@ function previewStatusPage(deployment) {
 
 export function createRequestHandler(deps) {
   const { store, events, config, projects, deployments, runtime } = deps;
+  const openFolderDialog = deps.folderDialog || pickFolder;
 
   return async function handleRequest(req, res) {
     const url = new URL(req.url || "/", "http://localhost");
@@ -185,6 +187,40 @@ export function createRequestHandler(deps) {
           showHidden: query.get("showHidden") === "1",
         });
         sendJSON(res, 200, { listing });
+        return;
+      }
+
+      // Opens the operating system's own folder chooser on this machine so a
+      // local repository can be picked without typing a path. The dialog is
+      // native, so the request stays open until the user chooses or cancels.
+      if (pathname === "/api/fs/pick-folder" && req.method === "POST") {
+        const body = await readJSONBody(req);
+        if (body.path !== undefined && typeof body.path !== "string") {
+          throw new HttpError(400, "path must be a string");
+        }
+        if (body.prompt !== undefined && typeof body.prompt !== "string") {
+          throw new HttpError(400, "prompt must be a string");
+        }
+        const controller = new AbortController();
+        const handleClose = () => {
+          if (!res.writableEnded) controller.abort();
+        };
+        res.on("close", handleClose);
+        let result;
+        try {
+          result = await openFolderDialog({
+            defaultPath: body.path,
+            prompt: body.prompt,
+            signal: controller.signal,
+          });
+        } catch (dialogError) {
+          if (controller.signal.aborted) return;
+          throw dialogError;
+        } finally {
+          res.off("close", handleClose);
+        }
+        if (controller.signal.aborted) return;
+        sendJSON(res, 200, result);
         return;
       }
 

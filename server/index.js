@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { ensureDirs, resolveConfig } from "./lib/config.js";
 import { DeploymentManager } from "./lib/deployments.js";
 import { EventHub } from "./lib/events.js";
+import { pickFolder } from "./lib/folder-dialog.js";
 import { getLanAddresses } from "./lib/lan.js";
 import { ProjectsManager } from "./lib/projects.js";
 import { Store } from "./lib/store.js";
@@ -39,7 +40,15 @@ export async function createVercioApp(options = {}) {
   const deployments = new DeploymentManager({ store, events, config });
   const projects = new ProjectsManager({ store, events, config, deployments });
   const runtime = { port: config.port, host: config.host };
-  const handler = createRequestHandler({ store, events, config, projects, deployments, runtime });
+  const handler = createRequestHandler({
+    store,
+    events,
+    config,
+    projects,
+    deployments,
+    runtime,
+    folderDialog: options.folderDialog || pickFolder,
+  });
   const server = http.createServer((req, res) => {
     handler(req, res).catch((error) => {
       console.error("[vercio] unhandled request error", error);

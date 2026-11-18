@@ -58,6 +58,11 @@ export interface BrowseEntry {
   isGitRepo: boolean;
 }
 
+export interface FolderPickResult {
+  path?: string;
+  cancelled?: boolean;
+}
+
 export interface BrowseListing {
   path: string;
   name: string;

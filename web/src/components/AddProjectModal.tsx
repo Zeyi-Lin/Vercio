@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FolderGit2, FolderOpen, Loader2, Sparkles } from "lucide-react";
 import { GithubIcon } from "./icons";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
 import { useRouter } from "../lib/router";
@@ -23,6 +23,7 @@ export function AddProjectModal() {
   const [busy, setBusy] = useState<"import" | "demo" | null>(null);
   const [error, setError] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -31,6 +32,7 @@ export function AddProjectModal() {
     setError("");
     setBusy(null);
     setPickerOpen(false);
+    setBrowsing(false);
   }, [open]);
 
   const submit = async () => {
@@ -55,6 +57,31 @@ export function AddProjectModal() {
       setError(submitError instanceof Error ? submitError.message : t("add.error"));
     } finally {
       setBusy(null);
+    }
+  };
+
+  // Ask the server to open the operating system's folder chooser. When the OS
+  // dialog cannot be shown (headless server, missing dialog tool) fall back to
+  // the in-page folder browser.
+  const browseFolder = async () => {
+    if (browsing) return;
+    setBrowsing(true);
+    setError("");
+    try {
+      const result = await api.pickFolder(source.trim(), t("add.pickPrompt"));
+      if (result.path) setSource(result.path);
+    } catch (browseError) {
+      const status = browseError instanceof ApiError ? browseError.status : 0;
+      if (status >= 500 && status !== 504) {
+        pushToast(t("add.dialogFallback"), "info");
+        setPickerOpen(true);
+      } else if (status === 504) {
+        setError(t("add.dialogTimeout"));
+      } else {
+        setError(browseError instanceof Error ? browseError.message : t("add.browseError"));
+      }
+    } finally {
+      setBrowsing(false);
     }
   };
 
@@ -158,11 +185,13 @@ export function AddProjectModal() {
                   autoFocus
                 />
                 <Button
-                  onClick={() => setPickerOpen(true)}
+                  onClick={browseFolder}
                   icon={<FolderOpen size={14} />}
+                  loading={browsing}
                   disabled={busy !== null}
+                  title={t("add.browseHint")}
                 >
-                  {t("add.browse")}
+                  {browsing ? t("add.openingDialog") : t("add.browse")}
                 </Button>
               </div>
             </Field>

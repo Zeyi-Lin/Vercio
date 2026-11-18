@@ -249,7 +249,7 @@ export function DirectoryPickerModal({
 
         {error && <div className="alert alert-error">{error}</div>}
 
-        <div className="dir-list" role="list">
+        <div className="dir-list">
           {!listing && loading ? (
             Array.from({ length: 5 }).map((_, index) => (
               <div className="dir-skeleton" key={index}>
@@ -266,7 +266,6 @@ export function DirectoryPickerModal({
             filtered.map((entry) => (
               <button
                 type="button"
-                role="listitem"
                 key={entry.path}
                 className={"dir-row" + (entry.isGitRepo ? " is-git" : "")}
                 onClick={() => void load(entry.path)}

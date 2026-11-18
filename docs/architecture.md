@@ -252,6 +252,9 @@ setStatus(preparing)
  5. git worktree add --detach --force <worktreePath> <commit>
  5b. copyLocalEnvFiles：把工作副本根目录里被 gitignore 的 `.env*` 复制进 worktree
      （分支已提交的同名文件不覆盖；日志只记文件名，不记值）
+ 5c. 若分支 == 工作副本当前 checked-out 分支：deployment.live = true，先全量同步一次
+     工作副本的未提交改动（git status 里的修改/新增/删除/重命名 + 根 `.env*`）
+ 5d. live：启动工作副本 watcher（fs.watch 递归；2s 轮询兜底），后续编辑增量同步进 worktree
  6. detectProject(worktree) → framework {label,type,kind,packageManager}
     若与 project.framework.label 不同 → 更新项目并广播 project.updated
  7. 解析 mode：auto → detection.type === "server" ? server : static
@@ -267,7 +270,7 @@ setStatus(preparing)
     e. spawn(detached:true, stdio:pipe) → 进程组
     f. waitForHttp(port, 120s, child 退出即 abort)
     g. ready → afterReady
-10. 启动/检测阶段异常 → 若 dev server 仍存活则先 kill，等待其 close ≤750ms 让剩余 stdout/stderr 落日志；
+10. 启动/检测阶段异常 → 先停止 live watcher；若 dev server 仍存活则先 kill，等待其 close ≤750ms 让剩余 stdout/stderr 落日志；
     waitForHttp 失败时从日志尾部提取一行“失败提示”（端口占用/权限/命令不存在等）拼进 error；
     fail（status=error, error 截断 2000 字符）→ 释放端口
 11. finally → markDirty + 广播 deployment.updated
@@ -325,6 +328,19 @@ devInstallPlan:
 - 服务重启后内存日志丢失，`getLog` 回退读文件最后 600 行。
 - 删除项目不会删除日志文件（已知泄漏点）。
 
+### 8.8 实时同步（live preview）
+
+预览对象是分支的隔离 worktree，而开发者平时编辑的是工作副本。为了做到"保存即渲染"，当部署的分支正是仓库当前 checkout 的分支时，部署会标记为 `live`（public DTO 字段 `live`），把工作副本的未提交状态同步叠加到 worktree 上：
+
+- 创建 worktree 后先全量同步一次；之后用 `fs.watch(repoPath, { recursive: true })`（macOS/Windows 支持递归）触发增量同步，Linux 没有递归 watch 时靠 2s 轮询兜底；事件去抖 120ms。
+- 同步内容：`git status --porcelain=v1 -z --untracked-files=all` 列出的修改/新增/删除/重命名（重命名会先删旧路径），跳过 `node_modules`、`.git`、`.vercio` 以及 `.env.example/sample/template`；另外单独同步仓库根目录的 `.env*`（内容哈希去重，编辑器保存后 Vite 会自动重启）。
+- **只写 worktree，不写工作副本**：worker 对 `repoPath` 只做只读的 `git status`/`branch --show-current` 与文件读取；dev server 的文件 watcher 看到 worktree 变化后触发 Vite/Next HMR，iframe 不刷新即可看到新代码。
+- 同步前比较内容哈希：同一内容不会重复 copy，避免 2s 轮询把 HMR 变成反复整页 reload。
+- 分支切换兜底：每次同步前检查当前分支，一旦工作副本切到别的分支，live 预览会 stop 并提示重新部署，避免状态显示 ready 却展示过期内容。
+- 停止/失败/顶替/关机都会关闭 watcher、轮询与去抖定时器。
+
+因此：**只有 checked-out 分支的预览会实时跟随本地编辑**；其它分支（以及未提交改动之外的东西，如依赖安装）仍是提交快照。
+
 ## 9. 持久化与事件
 
 - `Store` 持有唯一的 `state` 对象；所有 manager/route 直接改这个对象，然后 `markDirty()`。
@@ -377,7 +393,7 @@ devInstallPlan:
 修改代码时，以下不变量应保持；违反它们通常会造成难以定位的回归。
 
 1. **稳定预览 URL**：`/preview/<deploymentId>/<rest>` 必须 302 到预览端口并保留 `<rest>`；不要把 iframe 改成同源反代或改变 `<deploymentId>` 语义。
-2. **隔离**：任何预览相关操作只发生在 worktree/缓存目录，绝不 checkout、reset、clean 用户的工作副本；对用户仓库只允许 `fetch`、`worktree add/remove/prune`、只读查询。
+2. **隔离**：任何预览相关操作只发生在 worktree/缓存目录，绝不 checkout、reset、clean 用户的工作副本；对用户仓库只允许 `fetch`、`worktree add/remove/prune`、只读查询。live preview 只**读**工作副本（`git status` + 文件内容），写入只发生在 worktree。
 3. **端口生命周期**：每个预览端口必须且只能被一个 deployment 占用；停止、失败、顶替、关机都要释放。新代码路径若分配端口，必须覆盖所有失败分支。
 4. **状态机一致性**：状态字符串同时被 DB、API、SSE、TS 类型、文案、CSS、状态页消费；新增/重命名状态必须全链路更新。
 5. **`requestedMode` 与 `mode` 分离**：请求值保留在 `requestedMode`，解析结果写 `mode`；`auto` 永远在服务端解析，不由客户端推断。

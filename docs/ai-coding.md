@@ -387,6 +387,8 @@ ps -axo pid,pgid,command | grep worktrees | grep -v grep
 | 15 | 磁盘越来越大 | 日志不轮转、删除项目不删日志、deps 累计 | 清理 `.vercio/logs`、`deps`；不要假设自动回收 |
 | 16 | 预览 ready 但页面白屏/控制台 `Missing VITE_*` | worktree 没有工作副本里被 gitignore 的 `.env*` | 自动复制已实现；确认 `.env*` 在**仓库根目录**，看日志 `Copied local env files`。子目录/自定义 envDir 不在覆盖范围 |
 | 17 | Vite 预览中依赖包字体/图片 `@fs/...` 403 | 软链 node_modules 真实路径超出 Vite fs.allow | 纯 `vite` 脚本自动套 overlay 并带回退；`remix vite:dev`/`astro dev` 等不会套，需要在项目 config 里处理 |
+| 18 | 本地改代码预览不更新 | live preview 只对**工作副本当前 checked-out 分支**生效；切换到别的分支后旧 live 预览会 stop | 用 `git branch --show-current` 核对；预览分支≠当前分支时只能看到提交快照，切回并重新点分支即可 |
+| 19 | 预览反复自动刷新 | live sync 重复写相同内容触发 HMR | 已按内容哈希去重；改 `syncWorkingCopyState` 时不要无条件 `copyFile` |
 
 补充：
 
@@ -415,6 +417,7 @@ ps -axo pid,pgid,command | grep worktrees | grep -v grep
 - ❌ 不要假设 Windows 可用，也不要在 macOS 上引入只有 Windows 能跑的路径。
 - ❌ 不要在测试里写死 41xx 端口；用 `port:0`/探测。
 - ❌ 不要直接改 `db.json` 作为功能实现。
+- ❌ live preview 不要写用户工作副本：只允许读 `git status`/文件内容，所有写入必须落在 worktree。
 - ❌ 不要只改前端类型不改服务端 DTO（或反之）。
 - ❌ 不要把系统对话框的 `prompt`/路径直接拼进 AppleScript/PowerShell 源码；用 argv 或转义。
 - ❌ 不要假设运行环境有 GUI/zenity/kdialog；无对话框能力时要能 501 + 页内回退。

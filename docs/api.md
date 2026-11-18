@@ -90,6 +90,7 @@
   readyAt: string | null;
   stoppedAt: string | null;
   devCommand: string | null;                // 实际执行的命令（含参数）
+  live: boolean;                            // true = 分支即工作副本当前分支，预览实时同步未提交改动
   isProduction: boolean;                    // 当前恒为 false（未实现）
   projectName?: string;                     // 仅 /api/overview 注入
 }

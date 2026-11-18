@@ -160,6 +160,11 @@ events.closeAll();
 | `startDevServerChild(deployment, worktreePath, attempt, port)` | spawn 一个候选命令、接管 stdout/stderr、等 HTTP 就绪；失败时清理子进程并把日志根因拼进错误 |
 | `startStaticServer(...)` | `findFreePort` → `http.createServer(serveStaticDir(spaFallback))` → 绑 `0.0.0.0` |
 | `previewPort(id)` | 仅 ready 且有 port 时返回，否则 null |
+| `refreshCheckedOutBranch(project)` | `git branch --show-current`，和项目记录不一致时更新 `currentBranch` 并广播 |
+| `initLiveSync(deployment, project, worktreePath)` | live 部署：建 controller、首次全量同步、启动 watcher |
+| `startLiveWatcher(controller)` | `fs.watch(repoPath,{recursive})` + 2s 轮询兜底；120ms 去抖 |
+| `syncLiveWorkingCopy(controller, deployment, initial)` | 校验分支 → `syncWorkingCopyState` → 节流日志；分支变了会停掉 live 预览 |
+| `stopLiveSync(id)` / `requestLiveSync(id)` | 清理 watcher/定时器 / 手动触发一次同步 |
 | `appendLog(deployment, chunk)` | 去 ANSI/CR，内存最多 4000 行，文件 append |
 | `getLog(id)` | 优先内存；否则文件最后 600 行 |
 | `failureHint(deploymentId)` | 从日志尾部反向找一行“像错误”的输出（跳过本系统时间戳行、`$`/`>` 回显、堆栈、npm ERR），截断 240，用于拼接 error |
@@ -174,6 +179,22 @@ events.closeAll();
 | `removeProject(project)` | 停部署、关静态服务器、移除 worktree、删 worktrees/deps、删部署记录 |
 | `pruneHistory(projectId)` | 每项目只保留最新 60 条（创建时调用） |
 | `stopAll()` | 停止所有活动部署、关闭静态服务器、flush |
+
+### 实时同步（live preview）
+
+`create()` 会读取工作副本的当前分支：部署分支与之相同 → `deployment.live = true` 并把 `live` 投影到 public DTO；复用已有 ready 部署时要求 `live` 也一致（旧的非 live 部署会被新部署顶替）。
+
+live 部署在 worktree 建好后先调用 `syncWorkingCopyState()` 全量同步一次，再启动 watcher。watch 事件触发后经 120ms 去抖执行增量同步；Linux 无递归 watch，用 2s 轮询兜底。同步只写 worktree，工作副本仅被读取。分支切换时 live 部署会 stop（error 提示重新部署）。
+
+`live-sync.js` 的导出：
+
+| 导出 | 作用 |
+| --- | --- |
+| `parseStatusEntries(stdout)` | 解析 `git status --porcelain=v1 -z`；`R/C` 记录的原路径在下一个 NUL 分片 |
+| `syncWorkingCopyState({ repoDir, worktreeDir, state })` | 把工作副本改动镜像到 worktree；`state = { syncedPaths, fileHashes, envHashes }` 跨调用保存 |
+| `shouldIgnoreWatchPath(filename)` | 忽略 `.git`/`node_modules`/`dist` 等目录的 watch 噪声 |
+
+同步细节：跳过 `.git`、`node_modules`、`.vercio`；跳过 `.env.example/sample/template`；单文件上限 32MB；symlink 按原样重建；内容哈希一致则不重复写（否则会每 2s 触发一次 HMR）；被 revert/提交的旧脏文件会从工作副本重新 copy 回 worktree。
 
 ### `create()` 的细节
 

@@ -86,6 +86,7 @@ db.json
 | `stoppedAt` | ISO \| null | stop/recover | |
 | `lastViewedAt` | ISO | create | **只写不读**，预留 |
 | `devCommand` | string \| null | run | 实际命令 + 参数，供 UI 显示 |
+| `live` | boolean | create/run | true：部署分支 == 工作副本当前分支，worktree 会实时同步未提交改动；public DTO 输出 |
 | `finishedAt` | ISO \| null | fail | 内部；不在 public DTO |
 
 ### 状态

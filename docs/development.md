@@ -67,6 +67,7 @@ node --test --test-name-pattern="static preview" tests/api.test.js
 | `deployments.test.js` | 自定义 dev server 预览（启动/日志/停止/停止后的状态页）、无 dev script 时显式 server 模式失败、并发 worktree 隔离 |
 | `preview.test.js` | pnpm/Vite 参数转发（不能出现多余的 `--`）、失败预览的 error 摘要与完整日志（含退出时刷出的尾部）、worktree 继承本地 `.env*`、Vite fs.allow overlay 的启用与回退 |
 | `vite-overlay.test.js` | overlay 只对纯 `vite` 脚本生效、生成内容包含项目 config 与 `fs.allow`、无 config 时的兜底、软链 node_modules 检测 |
+| `live-sync.test.js` | `git status -z` 解析（含重命名）、watcher 忽略目录、工作副本改动/删除/恢复镜像、node_modules/.git 不被同步 |
 | `frameworks.test.js` | `devCommand` 的包管理器差异（npm 保留 `--`，pnpm/yarn/bun 不加）、Next/vite 端口参数、安装计划跳过 |
 | `folder-dialog.test.js` | 起始目录解析、macOS argv 安全、Linux zenity→kdialog 回退、取消/不可用/非法路径、API 委托与参数校验 |
 | `git.test.js` | 默认分支、分支列表、ref 解析、README、diffStat、仓库信息、错误分支 |
@@ -321,6 +322,8 @@ CLI 覆盖：`--port/-p`、`--host`、`--data-dir`、`--open/-o`。
 | `npm test` 很慢/超时 | 串行跑真实 dev server、首次 demo、端口竞争 | 单独跑文件；增大 timeout；确认无端口泄漏 |
 | 预览状态 ready 但页面全白 | worktree 缺少工作副本里被 gitignore 的 `.env*`，前端启动即抛错（如 `Missing VITE_API_BASE_URL`） | 确认 `.env*` 在项目根目录；部署日志应有 `Copied local env files into the worktree`。可打开预览端口看浏览器 console |
 | Vite 预览里依赖包的字体/图片 403（`/@fs/...`） | 软链 node_modules 的真实路径超出 Vite `server.fs.allow` | 纯 `vite` dev script 会自动套 `.vercio.vite.config.mjs` overlay；自定义/框架封装脚本需自行在项目 config 里加 `server.fs.allow` |
+| 改了本地代码预览不更新 | 预览的分支不是工作副本当前 checked-out 分支（live 只对当前分支生效），或 live 已被暂停 | 看预览工具栏是否有 LIVE 标记；切换分支后重新点该分支部署。`git branch --show-current` 确认当前分支 |
+| 预览每 2 秒自动刷新一次 | 早期 live sync 无内容去重导致重复写文件 | 已用内容哈希去重；若仍出现看 `Live sync:` 日志里是否反复出现同一文件 |
 
 ## 12. 提交前 checklist
 

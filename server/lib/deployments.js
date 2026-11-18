@@ -8,6 +8,7 @@ import { newId } from "./ids.js";
 import {
   addWorktree,
   commitMeta,
+  currentBranch,
   resolveBranch,
   removeWorktree,
 } from "./git.js";
@@ -24,6 +25,7 @@ import {
   supportsViteConfigOverlay,
   writeViteConfigOverlay,
 } from "./vite-overlay.js";
+import { shouldIgnoreWatchPath, syncWorkingCopyState } from "./live-sync.js";
 
 const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 const MAX_LOG_LINES = 4000;
@@ -74,6 +76,7 @@ export class DeploymentManager {
     this.logs = new Map();
     this.runners = new Map();
     this.stopping = new Set();
+    this.liveWatchers = new Map();
     this.recoverInterrupted();
   }
 
@@ -134,6 +137,7 @@ export class DeploymentManager {
       readyAt: deployment.readyAt || null,
       stoppedAt: deployment.stoppedAt || null,
       devCommand: deployment.devCommand || null,
+      live: Boolean(deployment.live),
       isProduction: Boolean(deployment.isProduction),
     };
   }
@@ -206,6 +210,10 @@ export class DeploymentManager {
     const refInfo = await resolveBranch(project.repoPath, branch);
     const meta = await commitMeta(project.repoPath, refInfo.sha);
     const state = this.store.get();
+    // The checked-out branch previews the working copy: uncommitted edits are
+    // synced into its worktree so HMR renders them immediately.
+    const checkedOutBranch = await this.refreshCheckedOutBranch(project);
+    const live = Boolean(checkedOutBranch) && checkedOutBranch === branch;
 
     const existing = state.deployments.find(
       (deployment) =>
@@ -213,11 +221,16 @@ export class DeploymentManager {
         deployment.branch === branch &&
         deployment.commit === refInfo.sha &&
         deployment.status === "ready" &&
+        Boolean(deployment.live) === live &&
         (mode === "auto" || deployment.mode === mode)
     );
     if (existing) {
-      if (existing.mode === "static") return { deployment: this.toPublic(existing), reused: true };
+      if (existing.mode === "static") {
+        this.requestLiveSync(existing.id);
+        return { deployment: this.toPublic(existing), reused: true };
+      }
       if (await isPortResponding(existing.port)) {
+        this.requestLiveSync(existing.id);
         return { deployment: this.toPublic(existing), reused: true };
       }
       existing.status = "stopped";
@@ -247,6 +260,7 @@ export class DeploymentManager {
       readyAt: null,
       stoppedAt: null,
       lastViewedAt: nowIso(),
+      live,
     };
     state.deployments.unshift(deployment);
     this.pruneHistory(project.id);
@@ -461,6 +475,162 @@ export class DeploymentManager {
     }
   }
 
+  async refreshCheckedOutBranch(project) {
+    const branch = await currentBranch(project.repoPath).catch(() => "");
+    if (branch && project.currentBranch !== branch) {
+      project.currentBranch = branch;
+      project.updatedAt = nowIso();
+      this.store.markDirty();
+      this.events.emit("project.updated", { projectId: project.id });
+    }
+    return branch;
+  }
+
+  requestLiveSync(deploymentId) {
+    const controller = this.liveWatchers.get(deploymentId);
+    if (!controller) return;
+    this.scheduleLiveSync(controller);
+  }
+
+  async initLiveSync(deployment, project, worktreePath) {
+    const controller = {
+      deploymentId: deployment.id,
+      repoPath: project.repoPath,
+      worktreePath,
+      branch: deployment.branch,
+      state: { syncedPaths: new Set(), fileHashes: new Map(), envHashes: new Map() },
+      debounceTimer: null,
+      interval: null,
+      watcher: null,
+      busy: false,
+      pending: false,
+      branchWarned: false,
+      lastLogAt: 0,
+    };
+    this.liveWatchers.set(deployment.id, controller);
+    this.log(
+      deployment,
+      "Live preview: following the working copy of " + deployment.branch +
+        " (uncommitted edits are synced automatically)"
+    );
+    await this.syncLiveWorkingCopy(controller, deployment, true);
+    if (!deployment.live) {
+      this.stopLiveSync(deployment.id);
+      return;
+    }
+    this.startLiveWatcher(controller);
+  }
+
+  startLiveWatcher(controller) {
+    const trigger = () => this.scheduleLiveSync(controller);
+    try {
+      controller.watcher = fs.watch(controller.repoPath, { recursive: true }, (_event, filename) => {
+        if (shouldIgnoreWatchPath(filename)) return;
+        trigger();
+      });
+      controller.watcher.on?.("error", () => {});
+    } catch {
+      controller.watcher = null;
+    }
+    // fs.watch is not recursive on Linux; the interval also covers editors that
+    // write through temp files or events dropped by the OS watcher.
+    controller.interval = setInterval(trigger, 2000);
+    controller.interval.unref?.();
+  }
+
+  scheduleLiveSync(controller) {
+    if (controller.debounceTimer) return;
+    controller.debounceTimer = setTimeout(() => {
+      controller.debounceTimer = null;
+      this.runLiveSync(controller).catch(() => {});
+    }, 120);
+    controller.debounceTimer.unref?.();
+  }
+
+  async runLiveSync(controller) {
+    if (controller.busy) {
+      controller.pending = true;
+      return;
+    }
+    controller.busy = true;
+    try {
+      const deployment = this.store
+        .get()
+        .deployments.find((item) => item.id === controller.deploymentId);
+      if (
+        !deployment ||
+        !["preparing", "installing", "starting", "ready"].includes(deployment.status)
+      ) {
+        this.stopLiveSync(controller.deploymentId);
+        return;
+      }
+      await this.syncLiveWorkingCopy(controller, deployment, false);
+    } finally {
+      controller.busy = false;
+      if (controller.pending) {
+        controller.pending = false;
+        this.scheduleLiveSync(controller);
+      }
+    }
+  }
+
+  async syncLiveWorkingCopy(controller, deployment, initial) {
+    const branch = await currentBranch(controller.repoPath).catch(() => "");
+    if (!branch || branch !== controller.branch) {
+      const current = branch || "a detached HEAD";
+      if (initial) {
+        deployment.live = false;
+        this.store.markDirty();
+        this.log(
+          deployment,
+          "Live preview disabled: the working copy moved to " + current + " while the preview started"
+        );
+        return;
+      }
+      if (!controller.branchWarned) {
+        controller.branchWarned = true;
+        this.stop(deployment, {
+          reason: "working copy switched to " + current,
+          error: "The working copy switched to " + current + ". Redeploy this branch to preview it.",
+        });
+      }
+      return;
+    }
+    controller.branchWarned = false;
+    const result = await syncWorkingCopyState({
+      repoDir: controller.repoPath,
+      worktreeDir: controller.worktreePath,
+      state: controller.state,
+    }).catch(() => ({ ok: false, changed: [], env: [] }));
+    if (!result.ok) return;
+    const count = result.changed.length + result.env.length;
+    if (!count) return;
+    const now = Date.now();
+    if (initial || now - controller.lastLogAt > 1500) {
+      controller.lastLogAt = now;
+      const sample = result.changed
+        .slice(0, 4)
+        .map((item) => item.replace(/ \((?:deleted|restored|removed)\)$/, ""));
+      this.log(
+        deployment,
+        "Live sync: " + count + " working-copy change" + (count === 1 ? "" : "s") +
+          (sample.length ? " (" + sample.join(", ") + (result.changed.length > 4 ? ", …" : "") + ")" : "")
+      );
+    }
+  }
+
+  stopLiveSync(deploymentId) {
+    const controller = this.liveWatchers.get(deploymentId);
+    if (!controller) return;
+    this.liveWatchers.delete(deploymentId);
+    if (controller.debounceTimer) clearTimeout(controller.debounceTimer);
+    if (controller.interval) clearInterval(controller.interval);
+    try {
+      controller.watcher?.close();
+    } catch {}
+    controller.watcher = null;
+  }
+
   devServerAttempts(deployment, detection, worktreePath, command) {
     const attempts = [{ command: command.command, args: command.args, env: command.env }];
     if (detection.kind !== "vite") return attempts;
@@ -563,6 +733,8 @@ export class DeploymentManager {
       const refInfo = await resolveBranch(project.repoPath, deployment.branch);
       deployment.commit = refInfo.sha;
       deployment.shortSha = refInfo.sha.slice(0, 7);
+      const checkedOutBranch = await this.refreshCheckedOutBranch(project);
+      deployment.live = Boolean(checkedOutBranch) && checkedOutBranch === deployment.branch;
       const branchSlug = slugify(deployment.branch);
       const worktreeRoot = path.join(this.config.dirs.worktrees, project.id);
       const worktreePath = path.join(worktreeRoot, branchSlug + "-" + deployment.commit.slice(0, 8));
@@ -573,6 +745,7 @@ export class DeploymentManager {
       await this.cleanupBranchWorktrees(project, branchSlug, worktreePath);
       await addWorktree(project.repoPath, deployment.commit, worktreePath);
       await this.copyLocalEnvFiles(deployment, project, worktreePath);
+      if (deployment.live) await this.initLiveSync(deployment, project, worktreePath);
 
       const detection = detectProject(worktreePath);
       deployment.framework = {
@@ -638,7 +811,9 @@ export class DeploymentManager {
         }
       }
       if (!child) throw new Error("Could not start the dev server");
-      if (deployment.status === "error") throw new Error("Preview cancelled");
+      if (deployment.status === "error" || deployment.status === "stopped") {
+        throw new Error("Preview cancelled");
+      }
 
       deployment.status = "ready";
       deployment.readyAt = nowIso();
@@ -648,6 +823,7 @@ export class DeploymentManager {
       this.afterReady(project, deployment);
     } catch (error) {
       if (this.stopping.has(deployment.id) && deployment.status === "stopped") return;
+      this.stopLiveSync(deployment.id);
       // Wait for the dev server to finish dying so its remaining stdio is in
       // the log before we snapshot the failure (the UI renders that snapshot).
       if (child) {
@@ -670,6 +846,7 @@ export class DeploymentManager {
 
   afterReady(project, deployment) {
     this.emitDeployment(deployment);
+    this.requestLiveSync(deployment.id);
     const others = this.store.get().deployments.filter(
       (item) =>
         item.projectId === project.id &&
@@ -716,6 +893,7 @@ export class DeploymentManager {
     if (!deployment) return;
     if (!["ready", "starting", "installing", "queued", "preparing"].includes(deployment.status)) return;
     this.stopping.add(deployment.id);
+    this.stopLiveSync(deployment.id);
     const staticServer = this.staticServers.get(deployment.id);
     if (staticServer) {
       this.staticServers.delete(deployment.id);
@@ -727,6 +905,7 @@ export class DeploymentManager {
     deployment.status = "stopped";
     deployment.stoppedAt = nowIso();
     if (previousStatus === "ready") deployment.error = null;
+    if (options.error) deployment.error = options.error;
     if (deployment.port) releasePort(deployment.port);
     this.log(deployment, "Preview stopped" + (options.reason ? " (" + options.reason + ")" : ""));
     this.store.markDirty();
@@ -796,6 +975,7 @@ export class DeploymentManager {
       try { server.close(); } catch {}
       this.staticServers.delete(id);
     }
+    for (const id of [...this.liveWatchers.keys()]) this.stopLiveSync(id);
     this.store.flush();
   }
 }

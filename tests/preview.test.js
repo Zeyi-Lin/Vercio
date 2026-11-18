@@ -191,19 +191,27 @@ test("failed previews expose the dev-server error and the complete log", { timeo
 });
 
 test("preview worktrees inherit the developer's local env files", { timeout: 120000 }, async (t) => {
+  const appFiles = (envLine) => ({
+    "package.json": JSON.stringify(
+      { name: "env-fixture", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    ),
+    "dev.mjs": devServerSource("env fixture"),
+    ".env": envLine,
+  });
   const repo = makeRepo("env-fixture", {
-    files: {
-      "package.json": JSON.stringify(
-        { name: "env-fixture", private: true, scripts: { dev: "node dev.mjs" } },
-        null,
-        2
-      ),
-      "dev.mjs": devServerSource("env fixture"),
-      ".env": "FROM_BRANCH=1\n",
-    },
+    files: appFiles("FROM_MAIN=1\n"),
+    branches: [
+      {
+        name: "feat/env",
+        files: appFiles("FROM_FEATURE=1\n"),
+        message: "feat: env branch",
+      },
+    ],
   });
   // Local-only env files are not committed: they only exist in the working copy.
-  fs.writeFileSync(path.join(repo, ".env"), "FROM_BRANCH=modified-locally\n");
+  fs.writeFileSync(path.join(repo, ".env"), "FROM_MAIN=modified-locally\n");
   fs.writeFileSync(path.join(repo, ".env.local"), "VITE_API_BASE_URL=http://127.0.0.1:9999\n");
   fs.writeFileSync(path.join(repo, ".env.development.local"), "DEV_ONLY=1\n");
   fs.writeFileSync(path.join(repo, ".env.example"), "EXAMPLE=1\n");
@@ -216,28 +224,124 @@ test("preview worktrees inherit the developer's local env files", { timeout: 120
   assert.equal(created.status, 201);
   const project = created.json.project;
 
-  const deployment = await deployReadyPreview(ctx, project.id);
-  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
-
+  // A preview of another branch is a committed snapshot: the branch .env wins
+  // and only the gitignored local files are copied in.
+  const featureDeployment = await deployReadyPreview(ctx, project.id, "feat/env");
+  assert.equal(featureDeployment.status, "ready", featureDeployment.error || "");
+  assert.equal(featureDeployment.live, false);
   const worktreeRoot = path.join(ctx.dataDir, "worktrees", project.id);
-  const worktreePath = path.join(worktreeRoot, fs.readdirSync(worktreeRoot)[0]);
-  // The branch's committed .env wins; gitignored local files are copied in.
-  assert.equal(fs.readFileSync(path.join(worktreePath, ".env"), "utf8"), "FROM_BRANCH=1\n");
+  const featureWorktree = path.join(
+    worktreeRoot,
+    fs.readdirSync(worktreeRoot).find((name) => name.startsWith("feat-env-"))
+  );
+  assert.equal(fs.readFileSync(path.join(featureWorktree, ".env"), "utf8"), "FROM_FEATURE=1\n");
   assert.equal(
-    fs.readFileSync(path.join(worktreePath, ".env.local"), "utf8"),
+    fs.readFileSync(path.join(featureWorktree, ".env.local"), "utf8"),
     "VITE_API_BASE_URL=http://127.0.0.1:9999\n"
   );
   assert.equal(
-    fs.readFileSync(path.join(worktreePath, ".env.development.local"), "utf8"),
+    fs.readFileSync(path.join(featureWorktree, ".env.development.local"), "utf8"),
     "DEV_ONLY=1\n"
   );
+  const featureLogs = await request(
+    ctx.base,
+    "GET",
+    "/api/deployments/" + featureDeployment.id + "/logs"
+  );
+  assert.match(featureLogs.json.log, /Copied local env files into the worktree:/);
+  assert.match(featureLogs.json.log, /\.env\.local/);
+  assert.match(featureLogs.json.log, /\.env\.development\.local/);
 
-  const logs = await request(ctx.base, "GET", "/api/deployments/" + deployment.id + "/logs");
-  assert.match(logs.json.log, /Copied local env files into the worktree:/);
-  assert.match(logs.json.log, /\.env\.local/);
-  assert.match(logs.json.log, /\.env\.development\.local/);
+  // The checked-out branch previews the working copy, so its dirty .env wins.
+  const mainDeployment = await deployReadyPreview(ctx, project.id, "main");
+  assert.equal(mainDeployment.status, "ready", mainDeployment.error || "");
+  assert.equal(mainDeployment.live, true);
+  const mainWorktree = path.join(
+    worktreeRoot,
+    fs.readdirSync(worktreeRoot).find((name) => name.startsWith("main-"))
+  );
+  assert.equal(
+    fs.readFileSync(path.join(mainWorktree, ".env"), "utf8"),
+    "FROM_MAIN=modified-locally\n"
+  );
 });
 
+function liveContentServer() {
+  return [
+    'import fs from "node:fs";',
+    'import http from "node:http";',
+    "const port = Number(process.env.PORT || 4399);",
+    'const host = process.env.HOST || "0.0.0.0";',
+    "http.createServer((req, res) => {",
+    '  let body = "";',
+    '  try { body = fs.readFileSync("content.txt", "utf8"); } catch {}',
+    '  res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });',
+    "  res.end(body);",
+    '}).listen(port, host, () => console.log("live fixture ready on " + port));',
+    "",
+  ].join("\n");
+}
+
+async function waitFor(predicate, timeoutMs = 10000, intervalMs = 200) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return false;
+}
+
+test("checked-out branch previews follow uncommitted edits live", { timeout: 120000 }, async (t) => {
+  const appFiles = (content) => ({
+    "package.json": JSON.stringify(
+      { name: "live-preview", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    ),
+    "dev.mjs": liveContentServer(),
+    "content.txt": content,
+  });
+  const repo = makeRepo("live-preview", {
+    files: appFiles("main content"),
+    branches: [
+      {
+        name: "feat/snapshot",
+        files: appFiles("snapshot content"),
+        message: "feat: snapshot branch",
+      },
+    ],
+  });
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  assert.equal(created.status, 201);
+  const project = created.json.project;
+
+  const mainDeployment = await deployReadyPreview(ctx, project.id, "main");
+  assert.equal(mainDeployment.status, "ready", mainDeployment.error || "preview did not start");
+  assert.equal(mainDeployment.live, true);
+  const snapshotDeployment = await deployReadyPreview(ctx, project.id, "feat/snapshot");
+  assert.equal(snapshotDeployment.status, "ready");
+  assert.equal(snapshotDeployment.live, false);
+
+  const mainUrl = "http://127.0.0.1:" + mainDeployment.port + "/";
+  const snapshotUrl = "http://127.0.0.1:" + snapshotDeployment.port + "/";
+  const textOf = async (url) => (await fetch(url)).text();
+  assert.match(await textOf(mainUrl), /main content/);
+  assert.match(await textOf(snapshotUrl), /snapshot content/);
+
+  // Edit only the working copy - the preview worktree is updated by live sync
+  // and the dev server serves the new file without a redeploy.
+  fs.writeFileSync(path.join(repo, "content.txt"), "edited locally");
+  const updated = await waitFor(async () => /edited locally/.test(await textOf(mainUrl)));
+  assert.equal(updated, true, "live preview did not pick up the working-copy edit");
+
+  // Other branches stay on their committed snapshot.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.match(await textOf(snapshotUrl), /snapshot content/);
+});
 // Minimal stand-in for the Vite CLI so the overlay wiring can be tested without
 // installing dependencies: it honours --port/--host, records its argv and can
 // deliberately reject the generated `--config` overlay.

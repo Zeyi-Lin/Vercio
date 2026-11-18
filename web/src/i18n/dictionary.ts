@@ -249,7 +249,7 @@ export const en = {
   "project.preview": "Preview",
   "project.taglinePlaceholder": "No tagline yet — add one in Settings.",
   "project.default": "default",
-  "project.uncommitted": "{count} uncommitted changes not previewed",
+  "project.uncommitted": "{count} uncommitted changes · live-synced in the checked-out branch preview",
   "project.demoRepository": "Bundled demo repository",
   "project.importing.title": "Cloning repository",
   "project.importing.desc":
@@ -292,6 +292,18 @@ export const en = {
   "preview.discussion": "Discussion",
   "preview.settings": "Settings",
   "preview.moreActions": "More actions",
+  "preview.fullscreen": "Fullscreen preview",
+  "preview.exitFullscreen": "Exit fullscreen",
+  "preview.notRunning": "not running",
+  "preview.idle.title": "Preview not running",
+  "preview.idle.desc":
+    "This branch has no local preview right now. Starting one creates an isolated worktree and runs its dev server on a free local port.",
+  "preview.confirmStart.title": "Run this branch locally?",
+  "preview.confirmStart.desc":
+    "Start a local preview for {branch}? Vercio will create a worktree and run its dev server on this machine.",
+  "preview.confirmStart.hint":
+    "Nothing leaves this machine. The first run may install dependencies and take a while.",
+  "preview.confirmStart.later": "Not now",
   "preview.device.desktop": "Desktop",
   "preview.device.tablet": "Tablet",
   "preview.device.mobile": "Mobile",
@@ -299,6 +311,9 @@ export const en = {
   "preview.devServer": "dev server",
   "preview.static": "static",
   "preview.production": "production",
+  "preview.live": "live",
+  "preview.liveHint":
+    "This preview follows your working copy: uncommitted edits are synced into an isolated worktree and hot-reloaded.",
   "preview.noPreview": "No preview running for this branch.",
   "preview.stop": "Stop preview",
   "preview.share": "Share preview",
@@ -424,7 +439,7 @@ export const en = {
   "overview.repo.localPath": "Local path",
   "overview.repo.lastCommit": "Last commit",
   "overview.repo.dirty":
-    "{count} uncommitted files in the working copy. Previews always use committed branches.",
+    "{count} uncommitted files in the working copy. The checked-out branch preview syncs them live; other branches keep their committed snapshot.",
   "overview.deployments.title": "Deployments",
   "overview.deployments.subtitle": "Recent previews for this project.",
   "overview.deployments.all": "All previews",
@@ -462,9 +477,9 @@ export const en = {
   "settings.defaultBranch": "Default branch",
   "settings.checkedOut": "Checked out branch",
   "settings.dirtyNote":
-    "{count} uncommitted files in the working copy. Previews only use committed branches.",
+    "{count} uncommitted files in the working copy. The checked-out branch preview syncs them live; other branches only use committed branches.",
   "settings.worktreeHint":
-    "Previews are created from isolated git worktrees under your Vercio data directory, so branches can run side by side without touching your working copy.",
+    "Previews are created from isolated git worktrees under your Vercio data directory, so branches can run side by side without touching your working copy. The branch that is checked out keeps its uncommitted edits synced into the preview for instant hot reload.",
   "settings.refreshed": "Repository refreshed",
   "settings.refreshError": "Could not refresh repository",
   "settings.profile.title": "Local profile",
@@ -753,7 +768,7 @@ export const zh: Record<TranslationKey, string> = {
   "project.preview": "预览",
   "project.taglinePlaceholder": "还没有标语，去「设置」添加。",
   "project.default": "默认",
-  "project.uncommitted": "{count} 个未提交的改动不会出现在预览中",
+  "project.uncommitted": "{count} 个未提交改动 · 当前分支预览实时同步",
   "project.demoRepository": "内置演示仓库",
   "project.importing.title": "正在克隆仓库",
   "project.importing.desc":
@@ -795,6 +810,17 @@ export const zh: Record<TranslationKey, string> = {
   "preview.discussion": "讨论",
   "preview.settings": "设置",
   "preview.moreActions": "更多操作",
+  "preview.fullscreen": "全屏预览",
+  "preview.exitFullscreen": "退出全屏",
+  "preview.notRunning": "未运行",
+  "preview.idle.title": "本地预览未启动",
+  "preview.idle.desc":
+    "这个分支当前没有本地预览。启动后会创建独立的 worktree，并在本机空闲端口运行开发服务器。",
+  "preview.confirmStart.title": "要在本地运行这个分支吗？",
+  "preview.confirmStart.desc":
+    "要为分支 {branch} 启动本地预览吗？Vercio 会创建 worktree，并在这台机器上运行开发服务器。",
+  "preview.confirmStart.hint": "不会上传任何内容；首次运行可能需要安装依赖，耗时稍长。",
+  "preview.confirmStart.later": "暂不启动",
   "preview.device.desktop": "桌面",
   "preview.device.tablet": "平板",
   "preview.device.mobile": "手机",
@@ -802,6 +828,9 @@ export const zh: Record<TranslationKey, string> = {
   "preview.devServer": "开发服务器",
   "preview.static": "静态",
   "preview.production": "生产",
+  "preview.live": "实时",
+  "preview.liveHint":
+    "这个预览会跟随工作副本：未提交的改动会同步进隔离 worktree，并触发热更新。",
   "preview.noPreview": "这个分支当前没有运行中的预览。",
   "preview.stop": "停止预览",
   "preview.share": "分享预览",
@@ -922,7 +951,7 @@ export const zh: Record<TranslationKey, string> = {
   "overview.repo.branches": "分支数",
   "overview.repo.localPath": "本地路径",
   "overview.repo.lastCommit": "最近提交",
-  "overview.repo.dirty": "工作副本中有 {count} 个未提交文件。预览始终使用已提交的分支。",
+  "overview.repo.dirty": "工作副本中有 {count} 个未提交文件。当前分支的预览会实时同步这些改动，其它分支仍使用提交快照。",
   "overview.deployments.title": "部署",
   "overview.deployments.subtitle": "这个项目最近的预览。",
   "overview.deployments.all": "全部预览",
@@ -959,9 +988,9 @@ export const zh: Record<TranslationKey, string> = {
   "settings.localPath": "本地路径",
   "settings.defaultBranch": "默认分支",
   "settings.checkedOut": "当前检出分支",
-  "settings.dirtyNote": "工作副本中有 {count} 个未提交文件。预览只使用已提交的分支。",
+  "settings.dirtyNote": "工作副本中有 {count} 个未提交文件。当前分支的预览会实时同步；其它分支只使用已提交的内容。",
   "settings.worktreeHint":
-    "每次预览都会在 Vercio 数据目录下创建隔离的 git worktree，因此多个分支可以同时运行，且不会改动你的工作副本。",
+    "每次预览都会在 Vercio 数据目录下创建隔离的 git worktree，因此多个分支可以同时运行，且不会改动你的工作副本。当前 checked-out 分支会把未提交改动实时同步进预览，保存即可热更新。",
   "settings.refreshed": "仓库已刷新",
   "settings.refreshError": "无法刷新仓库",
   "settings.profile.title": "本地资料",

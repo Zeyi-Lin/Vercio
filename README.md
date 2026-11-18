@@ -39,6 +39,7 @@
 - **产品空间**：每个项目都有可编辑的 Product brief（Markdown）、README 预览、项目笔记（Markdown、标签、置顶、自动保存、可关联分支）和分支讨论区。
 - **框架自动识别**：Next.js、Vite、Astro、SvelteKit、Remix、Nuxt、CRA、Vue CLI、Gatsby、自定义 dev server、纯静态站点，自动生成正确的端口与 host 参数。
 - **依赖缓存**：按 `package.json + lockfile` 指纹缓存 `node_modules`；如果本地工作副本已经装好了依赖，会直接复用软链，避免重复安装。
+- **保存即更新**：预览当前 checked-out 的分支时，Vercio 会把工作副本里未提交的改动（修改/新增/删除/重命名文件与 `.env*`）实时同步进隔离 worktree，保存代码后由 Vite/Next 热更新直接反映在预览里；其它分支仍展示提交快照。
 - **本地环境变量**：预览 worktree 会自动带上工作副本里被 gitignore 的 `.env*` 文件（分支已提交的同名文件优先），所以依赖 `VITE_*` 等变量的前端在分支预览里也能正常启动，不再白屏。
 - **系统文件夹选择器**：添加本地项目时点「浏览」直接打开系统自带的文件夹窗口（macOS / Windows / Linux），选好仓库后路径自动填入，不用手动输入长路径；没有图形界面时自动退回页面内目录浏览。
 - **过程可视**：准备 worktree、安装依赖、启动 dev server 的每一步都有实时日志与状态；失败时可以看完整日志，一键重试。
@@ -118,7 +119,7 @@ npm run typecheck   # TypeScript 检查
 ## 使用流程
 
 1. **添加项目**：GitHub 仓库会 clone 到 `.vercio/repos/`；本地仓库直接引用原目录，不会改动你的工作区。
-2. **Previews**：左侧分支列表点击即预览。首次会创建隔离 worktree、安装依赖并启动 dev server，过程有日志；再次点击同一分支通常直接复用。
+2. **Previews**：左侧分支列表点击即预览。分支尚未运行时，Vercio 会先询问是否在本地启动服务；首次会创建隔离 worktree、安装依赖并启动 dev server（过程有日志），再次点击同一分支通常直接复用。浏览器框右上角的展开按钮可进入无界面全屏预览，按 Esc 退出。
 3. **对比**：点击 **Compare**，右侧选择对比分支；两个分支各自运行在独立端口，互不干扰。
 4. **讨论**：预览页右上角 **Discussion** 打开当前分支的讨论面板，评论与关联笔记会同步给所有访问者。
 5. **产品描述 / 笔记**：Overview 中写 Product brief，Notes 中写产品笔记、评审记录、发布清单；全部 Markdown 渲染、自动保存。

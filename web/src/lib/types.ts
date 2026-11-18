@@ -35,6 +35,7 @@ export interface Deployment {
   readyAt: string | null;
   stoppedAt: string | null;
   devCommand: string | null;
+  live?: boolean;
   isProduction: boolean;
   projectName?: string;
 }

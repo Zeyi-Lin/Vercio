@@ -6,6 +6,7 @@ import {
   ExternalLink,
   GitBranch,
   Loader2,
+  Maximize2,
   Play,
   RotateCw,
   Square,
@@ -81,18 +82,21 @@ export function PreviewState({
   deployment,
   branch,
   logs,
+  onStart,
   onRetry,
   onStop,
 }: {
   deployment?: Deployment | null;
   branch: string;
   logs: string;
+  onStart?: () => void;
   onRetry: () => void;
   onStop?: () => void;
 }) {
   const t = useT();
   const status = deployment?.status;
-  const pending = !deployment || isPendingStatus(status);
+  const idle = !deployment;
+  const pending = Boolean(deployment) && isPendingStatus(status);
   const failed = status === "error";
   const stopped = status === "stopped";
 
@@ -100,62 +104,96 @@ export function PreviewState({
     <div className={"build-overlay" + (failed ? " build-overlay-error" : "")}>
       <div className="build-panel">
         <div className="build-head">
-          <span className={"build-icon" + (failed ? " is-error" : stopped ? " is-idle" : "")}>
-            {failed ? <AlertCircle size={18} /> : stopped ? <Square size={15} /> : <Loader2 size={17} className="spin" />}
+          <span className={"build-icon" + (failed ? " is-error" : stopped || idle ? " is-idle" : "")}>
+            {idle ? (
+              <Play size={15} />
+            ) : failed ? (
+              <AlertCircle size={18} />
+            ) : stopped ? (
+              <Square size={15} />
+            ) : (
+              <Loader2 size={17} className="spin" />
+            )}
           </span>
           <div className="build-heading">
-            <h3>{deployment ? t(statusHeadlineKey(deployment.status)) : t("preview.status.preparingGeneral")}</h3>
+            <h3>
+              {idle
+                ? t("preview.idle.title")
+                : deployment
+                  ? t(statusHeadlineKey(deployment.status))
+                  : t("preview.status.preparingGeneral")}
+            </h3>
             <p>
               <GitBranch size={11} /> <span className="mono">{branch}</span>
-              {deployment && (
+              {idle ? (
                 <>
                   <span className="dot-sep">·</span>
-                  <span className="mono">{deployment.shortSha}</span>
-                  <span className="dot-sep">·</span>
-                  {relativeTime(deployment.createdAt)}
+                  {t("preview.notRunning")}
                 </>
+              ) : (
+                deployment && (
+                  <>
+                    <span className="dot-sep">·</span>
+                    <span className="mono">{deployment.shortSha}</span>
+                    <span className="dot-sep">·</span>
+                    {relativeTime(deployment.createdAt)}
+                  </>
+                )
               )}
             </p>
           </div>
           {deployment && !pending && <StatusPill status={deployment.status} />}
         </div>
 
-        {pending && <BuildSteps status={status || "queued"} />}
-
-        {failed && (
-          <div className="build-error">
-            <p>{deployment?.error || t("preview.failedMessage")}</p>
+        {idle ? (
+          <div className="build-idle">
+            <p>{t("preview.idle.desc")}</p>
             <div className="build-error-actions">
-              <button className="btn btn-sm btn-primary" onClick={onRetry}>
-                <RotateCw size={12} /> {t("preview.retry")}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {stopped && (
-          <div className="build-error">
-            <p>{deployment?.error || t("preview.stoppedMessage")}</p>
-            <div className="build-error-actions">
-              <button className="btn btn-sm btn-secondary" onClick={onRetry}>
+              <button className="btn btn-sm btn-primary" onClick={onStart} disabled={!onStart}>
                 <Play size={12} /> {t("preview.start")}
               </button>
-              {onStop && (
-                <button className="btn btn-sm btn-ghost" onClick={onStop}>
-                  {t("preview.remove")}
-                </button>
-              )}
             </div>
           </div>
+        ) : (
+          <>
+            {pending && <BuildSteps status={status || "queued"} />}
+
+            {failed && (
+              <div className="build-error">
+                <p>{deployment?.error || t("preview.failedMessage")}</p>
+                <div className="build-error-actions">
+                  <button className="btn btn-sm btn-primary" onClick={onRetry}>
+                    <RotateCw size={12} /> {t("preview.retry")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {stopped && (
+              <div className="build-error">
+                <p>{deployment?.error || t("preview.stoppedMessage")}</p>
+                <div className="build-error-actions">
+                  <button className="btn btn-sm btn-secondary" onClick={onRetry}>
+                    <Play size={12} /> {t("preview.start")}
+                  </button>
+                  {onStop && (
+                    <button className="btn btn-sm btn-ghost" onClick={onStop}>
+                      {t("preview.remove")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <TerminalLog
+              log={logs}
+              title={pending ? t("preview.logs.preparing") : t("preview.logs.title")}
+              emptyText={pending ? t("preview.logs.spinning") : t("preview.logs.none")}
+            />
+
+            {pending && <p className="build-hint">{t("preview.prepareHint")}</p>}
+          </>
         )}
-
-        <TerminalLog
-          log={logs}
-          title={pending ? t("preview.logs.preparing") : t("preview.logs.title")}
-          emptyText={pending ? t("preview.logs.spinning") : t("preview.logs.none")}
-        />
-
-        {pending && <p className="build-hint">{t("preview.prepareHint")}</p>}
       </div>
     </div>
   );
@@ -168,8 +206,10 @@ export function BrowserFrame({
   logs,
   reloadKey,
   onReload,
+  onStart,
   onRetry,
   onStop,
+  onFullscreen,
   branchPicker,
   compact = false,
 }: {
@@ -179,8 +219,10 @@ export function BrowserFrame({
   logs: string;
   reloadKey: number;
   onReload: () => void;
+  onStart?: () => void;
   onRetry: () => void;
   onStop?: () => void;
+  onFullscreen?: () => void;
   branchPicker?: ReactNode;
   compact?: boolean;
 }) {
@@ -210,7 +252,7 @@ export function BrowserFrame({
           </div>
           <div className="browser-url">
             <span className="browser-lock">V</span>
-            <span className="mono truncate">{ready ? displayUrl : branch + " · " + (deployment?.status || "new")}</span>
+            <span className="mono truncate">{ready ? displayUrl : branch + " · " + (deployment?.status || t("preview.notRunning"))}</span>
             {ready && (
               <CopyButton
                 value={window.location.origin + previewHref}
@@ -221,16 +263,29 @@ export function BrowserFrame({
           </div>
           <div className="browser-actions">
             {branchPicker}
-            <a
-              className="icon-btn"
-              href={previewHref}
-              target="_blank"
-              rel="noreferrer"
-              title={t("preview.openNewTab")}
-              aria-label={t("preview.openNewTab")}
-            >
-              <ExternalLink size={13} />
-            </a>
+            {ready && (
+              <a
+                className="icon-btn"
+                href={previewHref}
+                target="_blank"
+                rel="noreferrer"
+                title={t("preview.openNewTab")}
+                aria-label={t("preview.openNewTab")}
+              >
+                <ExternalLink size={13} />
+              </a>
+            )}
+            {onFullscreen && (
+              <button
+                className="icon-btn"
+                onClick={onFullscreen}
+                title={t("preview.fullscreen")}
+                aria-label={t("preview.fullscreen")}
+                disabled={!ready}
+              >
+                <Maximize2 size={13} />
+              </button>
+            )}
             <button
               className="icon-btn"
               onClick={onReload}
@@ -266,6 +321,7 @@ export function BrowserFrame({
               deployment={deployment}
               branch={branch}
               logs={logs}
+              onStart={onStart}
               onRetry={onRetry}
               onStop={onStop}
             />

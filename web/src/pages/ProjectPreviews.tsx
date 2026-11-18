@@ -5,7 +5,9 @@ import {
   GitBranch,
   GitCompare,
   MessageSquare,
+  Minimize2,
   Monitor,
+  Play,
   RefreshCw,
   Settings,
   Smartphone,
@@ -30,7 +32,7 @@ import { useToast } from "../components/Toast";
 import { BranchPanel } from "../components/BranchPanel";
 import { BrowserFrame, isPendingStatus } from "../components/PreviewPane";
 import { CommentsPanel } from "../components/CommentsPanel";
-import { Badge, Button, EmptyState, Skeleton, StatusPill } from "../components/ui";
+import { Badge, Button, EmptyState, Modal, Skeleton, StatusPill } from "../components/ui";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -69,7 +71,10 @@ export function ProjectPreviews({
   const [changes, setChanges] = useState<BranchChanges | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingStart, setPendingStart] = useState("");
+  const [focus, setFocus] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const focusRef = useRef<HTMLDivElement | null>(null);
   const inflight = useRef<Set<string>>(new Set());
   const deploymentsRef = useRef(deployments);
   deploymentsRef.current = deployments;
@@ -89,6 +94,78 @@ export function ProjectPreviews({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
+
+  const exitFocus = useCallback(async () => {
+    setFocus(false);
+    try {
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element | null;
+        webkitExitFullscreen?: () => Promise<void>;
+      };
+      if (document.fullscreenElement || doc.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else await doc.webkitExitFullscreen?.();
+      }
+    } catch {}
+  }, []);
+
+  const enterFocus = useCallback(async () => {
+    setFocus(true);
+    const node = focusRef.current as
+      | (HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> })
+      | null;
+    if (!node) return;
+    try {
+      if (node.requestFullscreen) await node.requestFullscreen();
+      else await node.webkitRequestFullscreen?.();
+    } catch {
+      // Native fullscreen can be blocked; the CSS immersive mode + Esc still works.
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      if (!document.fullscreenElement && !doc.webkitFullscreenElement) setFocus(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!focus) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void exitFocus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [focus, exitFocus]);
+
+  useEffect(() => {
+    return () => {
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element | null;
+        webkitExitFullscreen?: () => Promise<void>;
+      };
+      const active = document.fullscreenElement || doc.webkitFullscreenElement;
+      if (active && active === focusRef.current) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else doc.webkitExitFullscreen?.().catch(() => {});
+      }
+    };
+  }, []);
 
   const loadBranches = useCallback(
     async (silent = false) => {
@@ -162,6 +239,19 @@ export function ProjectPreviews({
     } catch {}
   }, []);
 
+  const deploymentFor = useCallback(
+    (branch: string): Deployment | null =>
+      deploymentsRef.current[branch] ||
+      data?.branches.find((item) => item.name === branch)?.deployment ||
+      null,
+    [data]
+  );
+
+  const canReuseDeployment = (deployment: Deployment | null): boolean =>
+    Boolean(
+      deployment && (deployment.status === "ready" || isPendingStatus(deployment.status))
+    );
+
   const ensureDeployment = useCallback(
     async (branch: string, force = false): Promise<Deployment | null> => {
       if (!branch) return null;
@@ -194,6 +284,14 @@ export function ProjectPreviews({
     [project.id, data, pushToast, fetchLogs]
   );
 
+  const startBranch = useCallback(
+    (branch: string) => {
+      if (!branch) return;
+      void ensureDeployment(branch);
+    },
+    [ensureDeployment]
+  );
+
   // Pick the initial branch from the URL once branches are available.
   useEffect(() => {
     if (!data || selected) return;
@@ -204,7 +302,9 @@ export function ProjectPreviews({
         ? wanted
         : data.defaultBranch;
     setSelected(initial);
-    ensureDeployment(initial);
+    // Never start a local service implicitly: a ready/pending deployment is
+    // reused below by the branch snapshot merge, everything else shows the
+    // in-pane start affordance instead.
     const compareWanted = params.get("compare");
     if (
       compareWanted &&
@@ -213,12 +313,11 @@ export function ProjectPreviews({
     ) {
       setCompare(true);
       setCompareBranch(compareWanted);
-      ensureDeployment(compareWanted);
     } else {
       const other = data.branches.find((branch) => branch.name !== initial)?.name || "";
       setCompareBranch(other);
     }
-  }, [data, selected, ensureDeployment]);
+  }, [data, selected]);
 
   // Keep the URL shareable with the selected branch.
   useEffect(() => {
@@ -263,6 +362,10 @@ export function ProjectPreviews({
   const primaryDeployment = deployments[selected] || null;
   const compareDeployment = compareBranch ? deployments[compareBranch] || null : null;
   const fetchedLogSnapshots = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    if (focus && primaryDeployment?.status !== "ready") void exitFocus();
+  }, [focus, primaryDeployment?.status, exitFocus]);
 
   // The status poll stops as soon as a deployment reaches a terminal state, and
   // SSE refreshes can flip that state before the poll gets another tick. Keep a
@@ -332,16 +435,25 @@ export function ProjectPreviews({
     pendingDeployments.length ? 1100 : null
   );
 
-  const selectBranch = (branch: string) => {
+  const applySelection = (branch: string) => {
     setSelected(branch);
     if (compare && branch === compareBranch) {
       const alternative = data?.branches.find((item) => item.name !== branch)?.name;
-      if (alternative) {
-        setCompareBranch(alternative);
-        ensureDeployment(alternative);
-      }
+      if (alternative) setCompareBranch(alternative);
     }
-    ensureDeployment(branch);
+    const existing = deploymentFor(branch);
+    if (existing) {
+      setDeployments((current) =>
+        current[branch]?.id === existing.id ? current : { ...current, [branch]: existing }
+      );
+    }
+  };
+
+  const selectBranch = (branch: string) => {
+    if (!branch || branch === selected) return;
+    applySelection(branch);
+    // Running a dev server is a local side effect: ask before starting one.
+    if (!canReuseDeployment(deploymentFor(branch))) setPendingStart(branch);
   };
 
   const toggleCompare = () => {
@@ -354,12 +466,10 @@ export function ProjectPreviews({
     setShowComments(false);
     setCompare(true);
     setCompareBranch(alternative);
-    ensureDeployment(alternative);
   };
 
   const chooseCompareBranch = (branch: string) => {
     setCompareBranch(branch);
-    ensureDeployment(branch);
   };
 
   const reloadBranch = (branch: string) => {
@@ -527,6 +637,12 @@ export function ProjectPreviews({
               <span className="mono truncate">{selected || t("preview.selectBranch")}</span>
             </span>
             {primaryDeployment && <StatusPill status={primaryDeployment.status} />}
+            {primaryDeployment?.live && primaryDeployment.status === "ready" && (
+              <span className="toolbar-live" title={t("preview.liveHint")}>
+                <span className="live-dot" />
+                {t("preview.live")}
+              </span>
+            )}
             {primaryDeployment?.mode && (
               <span className="toolbar-mode">{primaryDeployment.mode === "server" ? t("preview.devServer") : t("preview.static")}</span>
             )}
@@ -576,16 +692,31 @@ export function ProjectPreviews({
 
         <div className={"preview-panes" + (compare ? " preview-panes-compare" : "")}>
           {selected ? (
-            <BrowserFrame
-              deployment={primaryDeployment}
-              branch={selected}
-              device={device}
-              logs={primaryDeployment ? logs[primaryDeployment.id] || "" : ""}
-              reloadKey={reloads[selected] || 0}
-              onReload={() => reloadBranch(selected)}
-              onRetry={() => retryBranch(selected)}
-              onStop={primaryDeployment ? () => stopBranch(selected) : undefined}
-            />
+            <div className={"preview-frame-wrap" + (focus ? " is-focus" : "")} ref={focusRef}>
+              <BrowserFrame
+                deployment={primaryDeployment}
+                branch={selected}
+                device={device}
+                logs={primaryDeployment ? logs[primaryDeployment.id] || "" : ""}
+                reloadKey={reloads[selected] || 0}
+                onReload={() => reloadBranch(selected)}
+                onStart={() => startBranch(selected)}
+                onRetry={() => retryBranch(selected)}
+                onStop={primaryDeployment ? () => stopBranch(selected) : undefined}
+                onFullscreen={() => void enterFocus()}
+              />
+              {focus && (
+                <button
+                  type="button"
+                  className="preview-focus-exit"
+                  onClick={() => void exitFocus()}
+                >
+                  <Minimize2 size={14} />
+                  {t("preview.exitFullscreen")}
+                  <span className="preview-focus-kbd">Esc</span>
+                </button>
+              )}
+            </div>
           ) : (
             <div className="preview-placeholder">
               <EmptyState
@@ -604,6 +735,7 @@ export function ProjectPreviews({
               logs={compareDeployment ? logs[compareDeployment.id] || "" : ""}
               reloadKey={reloads[compareBranch] || 0}
               onReload={() => reloadBranch(compareBranch)}
+              onStart={() => startBranch(compareBranch)}
               onRetry={() => retryBranch(compareBranch)}
               onStop={compareDeployment ? () => stopBranch(compareBranch) : undefined}
               branchPicker={
@@ -682,6 +814,34 @@ export function ProjectPreviews({
           onCountChange={setCommentCount}
         />
       )}
+
+      <Modal
+        open={Boolean(pendingStart)}
+        onClose={() => setPendingStart("")}
+        size="sm"
+        title={t("preview.confirmStart.title")}
+        description={
+          pendingStart ? t("preview.confirmStart.desc", { branch: pendingStart }) : undefined
+        }
+        footer={
+          <>
+            <Button onClick={() => setPendingStart("")}>{t("preview.confirmStart.later")}</Button>
+            <Button
+              variant="primary"
+              icon={<Play size={13} />}
+              onClick={() => {
+                const branch = pendingStart;
+                setPendingStart("");
+                startBranch(branch);
+              }}
+            >
+              {t("preview.start")}
+            </Button>
+          </>
+        }
+      >
+        <p className="hint">{t("preview.confirmStart.hint")}</p>
+      </Modal>
     </div>
   );
 }

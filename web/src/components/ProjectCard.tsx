@@ -14,12 +14,16 @@ function markHue(name: string): number {
   return Math.abs(hash) % 360;
 }
 
-export function ProjectMark({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
+export function ProjectMark({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
   const hue = markHue(name);
   return (
     <span
-      className={"project-mark" + (size === "lg" ? " project-mark-lg" : "")}
+      className={
+        "project-mark" +
+        (size === "sm" ? " project-mark-sm" : size === "lg" ? " project-mark-lg" : "")
+      }
       style={{ ["--mark-hue" as string]: hue }}
+      aria-hidden="true"
     >
       {initials(name)}
     </span>

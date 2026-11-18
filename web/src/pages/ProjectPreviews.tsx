@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Ellipsis,
   GitBranch,
   GitCompare,
   MessageSquare,
   Monitor,
+  RefreshCw,
+  Settings,
   Smartphone,
   Square,
   Tablet,
@@ -15,6 +18,7 @@ import { useT } from "../i18n";
 import { useInterval } from "../lib/hooks";
 import { relativeTime } from "../lib/format";
 import { frameworkLabel } from "../lib/framework";
+import { Link, useRouter } from "../lib/router";
 import type {
   BranchChanges,
   BranchList,
@@ -36,8 +40,17 @@ const DEVICES: { id: Device; labelKey: "preview.device.desktop" | "preview.devic
   { id: "mobile", labelKey: "preview.device.mobile", icon: Smartphone },
 ];
 
-export function ProjectPreviews({ project }: { project: Project }) {
+export function ProjectPreviews({
+  project,
+  onRefreshRepo,
+  repoRefreshing = false,
+}: {
+  project: Project;
+  onRefreshRepo?: () => void;
+  repoRefreshing?: boolean;
+}) {
   const { openModal } = useApp();
+  const { navigate } = useRouter();
   const { pushToast } = useToast();
   const t = useT();
   const [data, setData] = useState<BranchList | null>(null);
@@ -55,9 +68,27 @@ export function ProjectPreviews({ project }: { project: Project }) {
   const [commentCount, setCommentCount] = useState(0);
   const [changes, setChanges] = useState<BranchChanges | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const inflight = useRef<Set<string>>(new Set());
   const deploymentsRef = useRef(deployments);
   deploymentsRef.current = deployments;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const loadBranches = useCallback(
     async (silent = false) => {
@@ -353,13 +384,15 @@ export function ProjectPreviews({ project }: { project: Project }) {
 
   if (error && !data) {
     return (
-      <div className="previews-error card">
-        <span className="empty-icon"><AlertCircle size={18} /></span>
-        <h3>{t("preview.couldNotLoad")}</h3>
-        <p className="muted">{error}</p>
-        <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
-          {t("preview.tryAgain")}
-        </Button>
+      <div className="previews previews-fallback">
+        <div className="previews-error card">
+          <span className="empty-icon"><AlertCircle size={18} /></span>
+          <h3>{t("preview.couldNotLoad")}</h3>
+          <p className="muted">{error}</p>
+          <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
+            {t("preview.tryAgain")}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -391,17 +424,19 @@ export function ProjectPreviews({ project }: { project: Project }) {
 
   if (data && data.branches.length === 0) {
     return (
-      <div className="card">
-        <EmptyState
-          icon={<GitBranch size={18} />}
-          title={t("preview.noBranches")}
-          description={t("preview.noBranchesDesc")}
-          actions={
-            <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
-              {t("preview.refreshBranchesBtn")}
-            </Button>
-          }
-        />
+      <div className="previews previews-fallback">
+        <div className="card">
+          <EmptyState
+            icon={<GitBranch size={18} />}
+            title={t("preview.noBranches")}
+            description={t("preview.noBranchesDesc")}
+            actions={
+              <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
+                {t("preview.refreshBranchesBtn")}
+              </Button>
+            }
+          />
+        </div>
       </div>
     );
   }
@@ -420,6 +455,68 @@ export function ProjectPreviews({ project }: { project: Project }) {
         refreshing={branchRefreshing}
         onSelect={selectBranch}
         onRefresh={() => loadBranches(false)}
+        footerActions={
+          <div className="toolbar-menu" ref={menuRef}>
+            <button
+              type="button"
+              className={"icon-btn toolbar-icon" + (menuOpen ? " is-active" : "")}
+              onClick={() => setMenuOpen((value) => !value)}
+              title={t("preview.moreActions")}
+              aria-label={t("preview.moreActions")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <Ellipsis size={14} />
+            </button>
+            {menuOpen && (
+              <div className="toolbar-menu-pop" role="menu">
+                <button
+                  type="button"
+                  className="toolbar-menu-item"
+                  role="menuitemcheckbox"
+                  aria-checked={compare}
+                  disabled={!data || data.branches.length < 2}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    toggleCompare();
+                  }}
+                >
+                  <GitCompare size={13} />
+                  {t("preview.compare")}
+                </button>
+                <Link
+                  to={"/p/" + project.id + "/overview"}
+                  className="toolbar-menu-item"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {t("project.tab.overview")}
+                </Link>
+                <Link
+                  to={"/p/" + project.id + "/notes"}
+                  className="toolbar-menu-item"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {t("project.tab.notes")}
+                </Link>
+                <button
+                  type="button"
+                  className="toolbar-menu-item"
+                  role="menuitem"
+                  disabled={!onRefreshRepo || repoRefreshing}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRefreshRepo?.();
+                  }}
+                >
+                  <RefreshCw size={13} className={repoRefreshing ? "spin" : ""} />
+                  {repoRefreshing ? t("project.refreshing") : t("project.refresh")}
+                </button>
+              </div>
+            )}
+          </div>
+        }
       />
 
       <section className="preview-stage">
@@ -453,16 +550,6 @@ export function ProjectPreviews({ project }: { project: Project }) {
             <Button
               size="sm"
               variant="secondary"
-              className={"toolbar-btn" + (compare ? " is-active" : "")}
-              icon={<GitCompare size={13} />}
-              onClick={toggleCompare}
-              disabled={!data || data.branches.length < 2}
-            >
-              {t("preview.compare")}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
               className={"toolbar-btn" + (showComments ? " is-active" : "")}
               icon={<MessageSquare size={13} />}
               onClick={() =>
@@ -474,6 +561,15 @@ export function ProjectPreviews({ project }: { project: Project }) {
             >
               {t("preview.discussion")}
               {commentCount > 0 && <span className="btn-count">{commentCount}</span>}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="toolbar-btn"
+              icon={<Settings size={13} />}
+              onClick={() => navigate("/p/" + project.id + "/settings")}
+            >
+              {t("preview.settings")}
             </Button>
           </div>
         </div>

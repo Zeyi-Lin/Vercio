@@ -29,6 +29,14 @@
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 20px 40px -24px rgba(0, 0, 0, 0.9);
   --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.65), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   --nav-height: 64px;
+  --workspace-bg: #070707;
+  --workspace-panel: #0c0c0c;
+  --workspace-stage: #050505;
+  --workspace-border: #1f1f1f;
+  --workspace-hover: rgba(255, 255, 255, 0.045);
+  --traffic-dot-1: #6b3434;
+  --traffic-dot-2: #685527;
+  --traffic-dot-3: #2d6440;
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -154,6 +162,17 @@ pre {
 .app-main {
   flex: 1;
   width: 100%;
+}
+
+.app-shell-workspace {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-shell-workspace .app-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .container {

@@ -26,7 +26,7 @@ web/src/
 ├── App.tsx           # Provider 组合、路由、全局快捷键、全局模态框
 ├── pages/
 │   ├── Dashboard.tsx
-│   ├── ProjectPage.tsx       # 项目壳：头部、tab、导入状态
+│   ├── ProjectPage.tsx       # 项目壳：默认 tab 全屏工作区；其余 tab 头部 + tab
 │   ├── ProjectOverview.tsx   # brief + README + 仓库信息
 │   ├── ProjectPreviews.tsx   # 分支预览/对比/讨论总控
 │   ├── ProjectNotes.tsx
@@ -89,6 +89,7 @@ RouterProvider
 `AppShell` 职责：
 
 - 渲染 `TopNav`、`<main><AppRoutes/></main>`、`Footer`。
+- 根据 `matchRoute(path)` 判定「项目工作区」路由（`/p/:id` 或 `/p/:id/previews`）：这类路由给 shell 加 `app-shell-workspace`，隐藏 `Footer`，`<main>` 高度锁定为视口减去顶栏，工作区自己吞掉滚动；其他路由保持普通文档流。
 - 挂载四个全局模态框：`ShareModal`、`AddProjectModal`、`ProfileModal`、`CommandPalette`。
 - 全局快捷键：
   - `Cmd/Ctrl+K`：打开/关闭命令面板；
@@ -102,9 +103,9 @@ RouterProvider
 | 路径 | 页面 | 说明 |
 | --- | --- | --- |
 | `/` | Dashboard | 空状态引导或项目工作台 |
-| `/p/:projectId` | ProjectPage | tab 缺省为 `previews` |
-| `/p/:projectId/overview` | ProjectPage | brief + README |
-| `/p/:projectId/previews` | ProjectPage | 分支预览（默认） |
+| `/p/:projectId` | ProjectPage | tab 缺省为 `previews`，渲染全屏预览工作区 |
+| `/p/:projectId/overview` | ProjectPage | brief + README（沿用项目头部 + tabs） |
+| `/p/:projectId/previews` | ProjectPage | 全屏分支预览工作区（默认） |
 | `/p/:projectId/notes` | ProjectPage | 笔记 |
 | `/p/:projectId/settings` | ProjectPage | 项目设置 |
 | 其他 | NotFound | |
@@ -239,11 +240,14 @@ inflight: ref<Set<branch>>（防重复请求）
 
 ### ProjectPage（`pages/ProjectPage.tsx`）
 
-- 头部：`ProjectMark`、名称、demo/importing/import-failed 徽章、tagline；操作：Refresh（git fetch）、Share、Preview（默认分支）。
-- 元信息：来源、分支数、默认分支、未提交文件数、最新提交。
-- tabs：Overview / Previews / Notes / Settings（`Link`）。
-- `importing`：全页状态卡（无日志，只有 spinner）；`error`：错误 + 重试导入。
+两种布局，由 `activeTab` 决定：
+
+- **`previews`（默认）**：全屏工作区 `.project-workspace`，不再渲染项目头部、tagline、操作按钮和 tab 条。直接渲染 `ProjectPreviews`；项目上下文（mark、名称、仓库路径、分支数、默认分支、未提交警告）由 `TopNav` 展示。加载/导入中/导入失败/未找到各自有工作区内的状态位。
+- **`overview` / `notes` / `settings`**：沿用旧的项目头部（mark、名称、tagline、Refresh/Share/Preview、元信息、tabs）+ `container` 页面布局；tabs 仍可切回预览。
+
 - 项目详情由本页加载，tab 子页面通过 props 拿 `project`。
+- `importing`：状态卡（无日志，只有 spinner）；`error`：错误 + 重试导入。
+- 「刷新仓库」入口：工作区里在左侧分支栏底部的 `…` 菜单中（`onRefreshRepo` 传回本页）；其他 tab 仍在头部按钮。
 
 ### ProjectOverview（`pages/ProjectOverview.tsx`）
 
@@ -254,11 +258,14 @@ inflight: ref<Set<branch>>（防重复请求）
 
 ### ProjectPreviews（`pages/ProjectPreviews.tsx`）
 
-- 左：`BranchPanel`（搜索、刷新、默认分支标签、每分支状态）。
-- 中：工具栏（分支名/状态/mode/prod 标签/设备切换/Compare/Discussion）、1 或 2 个 `BrowserFrame`、底部元信息（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、Share）。
+全屏两栏（`.previews`，`grid-template-columns: 240px 1fr`，无卡片边框/圆角，高度吃满 `.project-workspace`）：
+
+- 左 `BranchPanel`：分支标题 + 计数 + 刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
+- 中 `preview-stage`：工具栏（分支名/状态/mode/prod 标签 + 设备切换 + Discussion + Settings）、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、Share）。
+- 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
 - 设备切换在 compare 时禁用；compare 的第二个 pane 用 `<select>` 选分支。
-- 讨论面板打开时隐藏 compare。
-- 空分支/加载/错误各有独立状态。
+- 讨论面板（`previews-with-discussion`）展开为第三栏，打开时隐藏 compare 与底部左侧提交信息。
+- 空分支/加载/错误各有独立状态；宽度 ≤860px 时工作区改为上下堆叠并允许页面滚动。
 
 ### ProjectNotes（`pages/ProjectNotes.tsx`）
 
@@ -292,7 +299,7 @@ inflight: ref<Set<branch>>（防重复请求）
 | --- | --- | --- |
 | `ui.tsx` | Button/Spinner/StatusPill/Badge/Modal/ConfirmDialog/Field/TextInput/TextArea/Skeleton/CopyButton/EmptyState/Kbd | `Modal` 用 portal、Escape、锁 body 滚动；无 focus trap；`ConfirmDialog` 可要求输入确认文本；`StatusPill` 依赖 `format.statusTone` 与 `status.*` 文案 |
 | `Toast.tsx` | 全局 toast | 最多保留 4 条；error 6.5s，其余 3.8s；`useToast().pushToast` |
-| `TopNav.tsx` | 顶栏 | 面包屑、搜索入口、Share、语言、主题、头像；项目名来自 overview |
+| `TopNav.tsx` | 顶栏 | 搜索入口、Share、语言、主题、头像；项目路由下显示 `项目 ›` + 项目 mark/名称/仓库路径/分支数/默认分支/未提交警告（窄屏逐级隐藏，数据来自 overview 里的 Project）；Dashboard 只显示「项目」 |
 | `CommandPalette.tsx` | 命令面板 | 项目跳转 + 添加/演示/分享/复制地址/刷新；↑↓/Enter/Esc；分组 |
 | `AddProjectModal.tsx` | 添加项目 | GitHub/本地两个 tab；「浏览」先调系统文件夹窗口，成功填入路径；5xx（504 除外）时 toast 并回退到页内目录选择器；创建后跳项目页 |
 | `DirectoryPickerModal.tsx` | 页内目录选择器（系统窗口回退） | 只列目录、Git 标记、面包屑、快捷根、显示隐藏、请求序号防竞态；Escape 捕获阶段 `stopImmediatePropagation` 避免连带关闭父模态框；只能选 Git 仓库 |

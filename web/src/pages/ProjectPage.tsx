@@ -11,7 +11,7 @@ import {
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
-import { Link, useRouter } from "../lib/router";
+import { Link, normalizeProjectTab, useRouter } from "../lib/router";
 import { relativeTime, truncateMiddle } from "../lib/format";
 import type { ProjectDetail } from "../lib/types";
 import { useToast } from "../components/Toast";
@@ -47,6 +47,45 @@ function ProjectSkeleton() {
           <Skeleton height={120} />
           <Skeleton height={320} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceSkeleton() {
+  return (
+    <div className="project-workspace">
+      <div className="previews previews-loading">
+        <aside className="branch-panel">
+          <div className="branch-panel-head">
+            <Skeleton width={82} height={13} />
+            <Skeleton width={18} height={18} />
+          </div>
+          <div className="branch-search">
+            <Skeleton width="60%" height={11} />
+          </div>
+          <div className="branch-list">
+            {[0, 1, 2].map((index) => (
+              <div className="branch-item" key={index}>
+                <Skeleton width="62%" height={11} />
+                <Skeleton width="88%" height={9} style={{ marginTop: 9 }} />
+                <Skeleton width="45%" height={8} style={{ marginTop: 9 }} />
+              </div>
+            ))}
+          </div>
+          <div className="branch-panel-foot">
+            <Skeleton width="70%" height={9} />
+          </div>
+        </aside>
+        <section className="preview-stage">
+          <div className="preview-toolbar">
+            <Skeleton width={130} height={12} />
+            <Skeleton width={190} height={26} />
+          </div>
+          <div className="preview-panes">
+            <Skeleton height="100%" style={{ minHeight: 380, borderRadius: 12 }} />
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -89,7 +128,8 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   }, [projectId, load]);
 
   const project = detail?.project || overview?.projects.find((item) => item.id === projectId) || null;
-  const activeTab = TABS.some((item) => item.id === tab) ? tab : "previews";
+  const activeTab = normalizeProjectTab(tab);
+  const workspace = activeTab === "previews";
 
   const refreshRepo = async () => {
     setRefreshing(true);
@@ -109,21 +149,26 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   };
 
   if (error && !project) {
-    return (
-      <div className="container page project-page">
-        <div className="project-error-state">
-          <span className="empty-icon"><AlertCircle size={20} /></span>
-          <h1>{t("project.notFound")}</h1>
-          <p className="muted">{error}</p>
-          <Link to="/" className="btn btn-secondary btn-sm" style={{ marginTop: 18 }}>
-            <ArrowLeft size={13} /> {t("project.backToProjects")}
-          </Link>
-        </div>
+    const notFound = (
+      <div className="project-error-state">
+        <span className="empty-icon"><AlertCircle size={20} /></span>
+        <h1>{t("project.notFound")}</h1>
+        <p className="muted">{error}</p>
+        <Link to="/" className="btn btn-secondary btn-sm" style={{ marginTop: 18 }}>
+          <ArrowLeft size={13} /> {t("project.backToProjects")}
+        </Link>
       </div>
+    );
+    return workspace ? (
+      <div className="project-workspace">
+        <div className="workspace-state">{notFound}</div>
+      </div>
+    ) : (
+      <div className="container page project-page">{notFound}</div>
     );
   }
 
-  if (!project) return <ProjectSkeleton />;
+  if (!project) return workspace ? <WorkspaceSkeleton /> : <ProjectSkeleton />;
 
   const importing = project.status === "importing";
   const importFailed = project.status === "error";
@@ -132,6 +177,65 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
     : project.source.url
       ? project.source.url.replace(/^https?:\/\//, "")
       : truncateMiddle(project.repoPath, 46);
+
+  const importState = importing ? (
+    <div className="import-state">
+      <span className="import-spinner"><Loader2 size={20} className="spin" /></span>
+      <h2>{t("project.importing.title")}</h2>
+      <p>{t("project.importing.desc", { url: project.source.url || "" })}</p>
+      <div className="import-bar"><Skeleton width="100%" height={4} /></div>
+    </div>
+  ) : importFailed ? (
+    <div className="import-state">
+      <span className="import-spinner is-error"><AlertCircle size={20} /></span>
+      <h2>{t("project.importFailed.title")}</h2>
+      <p>{project.error || t("project.importFailed.desc")}</p>
+      <div className="import-actions">
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<RefreshCw size={13} />}
+          onClick={async () => {
+            try {
+              await api.retryImport(project.id);
+              pushToast(t("project.retryToast"), "info");
+              await load(true);
+            } catch (retryError) {
+              pushToast(retryError instanceof Error ? retryError.message : t("project.retryError"), "error");
+            }
+          }}
+        >
+          {t("project.retryImport")}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => navigate("/")}>
+          {t("project.backToProjects")}
+        </Button>
+      </div>
+      <p className="hint">{t("project.importHint")}</p>
+    </div>
+  ) : null;
+
+  if (workspace) {
+    if (importing || importFailed) {
+      return (
+        <div className="project-workspace">
+          <div className="workspace-state">
+            {importState}
+          </div>
+        </div>
+      );
+    }
+    if (!detail) return <WorkspaceSkeleton />;
+    return (
+      <div className="project-workspace">
+        <ProjectPreviews
+          project={project}
+          onRefreshRepo={refreshRepo}
+          repoRefreshing={refreshing}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="container project-page">
@@ -228,56 +332,13 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
         </nav>
       </header>
 
-      {importing && (
-        <div className="project-state card">
-          <div className="import-state">
-            <span className="import-spinner"><Loader2 size={20} className="spin" /></span>
-            <h2>{t("project.importing.title")}</h2>
-            <p>{t("project.importing.desc", { url: project.source.url || "" })}</p>
-            <div className="import-bar"><Skeleton width="100%" height={4} /></div>
-          </div>
-        </div>
-      )}
-
-      {importFailed && (
-        <div className="project-state card">
-          <div className="import-state">
-            <span className="import-spinner is-error"><AlertCircle size={20} /></span>
-            <h2>{t("project.importFailed.title")}</h2>
-            <p>{project.error || t("project.importFailed.desc")}</p>
-            <div className="import-actions">
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<RefreshCw size={13} />}
-                onClick={async () => {
-                  try {
-                    await api.retryImport(project.id);
-                    pushToast(t("project.retryToast"), "info");
-                    await load(true);
-                  } catch (retryError) {
-                    pushToast(retryError instanceof Error ? retryError.message : t("project.retryError"), "error");
-                  }
-                }}
-              >
-                {t("project.retryImport")}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => navigate("/")}>
-                {t("project.backToProjects")}
-              </Button>
-            </div>
-            <p className="hint">{t("project.importHint")}</p>
-          </div>
-        </div>
-      )}
+      {importing && <div className="project-state card">{importState}</div>}
+      {importFailed && <div className="project-state card">{importState}</div>}
 
       {!importing && !importFailed && detail && (
-        <div className={"project-content" + (activeTab === "previews" ? " project-content-previews" : "")}>
+        <div className="project-content">
           {activeTab === "overview" && (
             <ProjectOverview detail={detail} onReload={() => load(true)} />
-          )}
-          {activeTab === "previews" && (
-            <ProjectPreviews project={project} />
           )}
           {activeTab === "notes" && (
             <ProjectNotes project={project} />

@@ -24,6 +24,16 @@
   gap: 6px;
   min-width: 0;
 }
+.topbar-left {
+  flex: 1;
+  overflow: hidden;
+}
+.topbar-right {
+  flex: none;
+}
+.topbar-right > * {
+  flex: none;
+}
 
 .brand {
   display: flex;
@@ -73,6 +83,8 @@
   border-radius: 7px;
   color: var(--text-muted);
   font-size: 13.5px;
+  white-space: nowrap;
+  flex: none;
   transition: color 120ms var(--ease), background 120ms var(--ease);
 }
 .topbar-link:hover {
@@ -94,6 +106,122 @@
 .topbar-crumb .current {
   color: var(--text);
   font-weight: 500;
+}
+
+.topbar-crumb-sep {
+  flex: none;
+  color: var(--text-faint);
+}
+.topbar-inner-project {
+  gap: 10px;
+}
+.topbar-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.topbar-project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 8px 0 4px;
+  border-radius: 7px;
+  min-width: 0;
+  transition: background 120ms var(--ease);
+}
+.topbar-project-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.topbar-project-link[aria-current="page"] {
+  color: var(--text);
+}
+.topbar-project-name {
+  max-width: 190px;
+  font-size: 13.5px;
+  font-weight: 590;
+  letter-spacing: -0.012em;
+}
+.topbar-project-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.topbar-project-meta .mono {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.topbar-project-repo {
+  flex: 0 1 auto;
+  max-width: 320px;
+}
+.topbar-project-repo svg {
+  flex: none;
+}
+.topbar-project-repo .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-project-sep {
+  flex: none;
+}
+.topbar-project-warn {
+  color: #d8ad65;
+}
+[data-theme="light"] .topbar-project-link:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme="light"] .topbar-project-warn {
+  color: #a35a00;
+}
+
+@media (max-width: 1440px) {
+  .topbar-project-repo {
+    max-width: 230px;
+  }
+  .topbar-project-meta {
+    font-size: 11px;
+  }
+}
+@media (max-width: 1400px) {
+  .topbar-project-warn,
+  .topbar-project-sep-warn {
+    display: none;
+  }
+}
+@media (max-width: 1280px) {
+  .topbar-project-repo {
+    display: none;
+  }
+}
+@media (max-width: 1120px) {
+  .topbar-project-branches,
+  .topbar-project-sep-branches {
+    display: none;
+  }
+}
+@media (max-width: 980px) {
+  .topbar-project-default,
+  .topbar-project-sep-default {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .topbar-project-name {
+    max-width: 120px;
+  }
+}
+@media (max-width: 620px) {
+  /* The profile dialog still exposes the language switch on phones. */
+  .topbar .language-switch {
+    display: none;
+  }
 }
 
 .btn {
@@ -223,6 +351,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
   height: 34px;
   padding: 0 13px 0 11px;
   border-radius: 999px;
@@ -271,6 +400,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
   height: 32px;
   padding: 0 8px 0 10px;
   border-radius: 7px;

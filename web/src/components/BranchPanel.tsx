@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { GitBranch, RefreshCw, Search } from "lucide-react";
 import { useT } from "../i18n";
 import { relativeTime } from "../lib/format";
@@ -22,6 +23,7 @@ export function BranchPanel({
   refreshing,
   onSelect,
   onRefresh,
+  footerActions,
 }: {
   branches: Branch[];
   loading: boolean;
@@ -32,6 +34,7 @@ export function BranchPanel({
   refreshing?: boolean;
   onSelect: (branch: string) => void;
   onRefresh: () => void;
+  footerActions?: ReactNode;
 }) {
   const t = useT();
   const [filter, setFilter] = useState("");
@@ -138,7 +141,8 @@ export function BranchPanel({
           })}
       </div>
       <div className="branch-panel-foot">
-        <span>{t("preview.clickHint")}</span>
+        <span className="branch-panel-hint">{t("preview.clickHint")}</span>
+        {footerActions}
       </div>
     </aside>
   );

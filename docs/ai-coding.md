@@ -180,7 +180,7 @@ Deployment 字段还要考虑：`create()` 初始化、`run()` 回填、`toPubli
 2. `TABS` 下方条件渲染新组件。
 3. 新页面组件放 `pages/`，通过 props 拿 `project` / `detail`。
 4. `dictionary.ts` 加 `project.tab.<id>`（en+zh）。
-5. `pages.css` 加布局；注意 `project-content-previews` 是预览页专用类。
+5. `pages.css` 加布局；预览 tab 走全屏工作区（`.project-workspace` / `.previews`），默认 tab 的头部在 `TopNav`，新增 tab 若要复用 tab 条需确认不会和全屏预览布局冲突。
 6. 深链 `/p/:id/<tab>` 自动可用（`matchRoute` 接受任意 tab）。
 
 **顶层页面**

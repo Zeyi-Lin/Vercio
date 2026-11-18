@@ -1,9 +1,11 @@
-import { ChevronRight, Search, Wifi } from "lucide-react";
+import { ChevronRight, GitBranch, GitFork, Search, Wifi } from "lucide-react";
 import { Link, matchRoute, useRouter } from "../lib/router";
 import { initials } from "../lib/format";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
 import { LogoMark } from "./Logo";
+import { ProjectMark } from "./ProjectCard";
+import { GithubIcon } from "./icons";
 import { Kbd } from "./ui";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
@@ -20,7 +22,7 @@ export function TopNav() {
 
   return (
     <header className="topbar">
-      <div className="container topbar-inner">
+      <div className={"container topbar-inner" + (project ? " topbar-inner-project" : "")}>
         <div className="topbar-left">
           <Link to="/" className="brand" aria-label={t("nav.home")}>
             <LogoMark />
@@ -33,10 +35,39 @@ export function TopNav() {
           </Link>
           {project && (
             <>
-              <ChevronRight size={13} className="muted" aria-hidden="true" />
-              <Link to={"/p/" + project.id} className="topbar-link truncate" style={{ maxWidth: 220 }}>
-                {project.name}
-              </Link>
+              <ChevronRight size={13} className="topbar-crumb-sep muted" aria-hidden="true" />
+              <div className="topbar-project">
+                <Link
+                  to={"/p/" + project.id}
+                  className="topbar-project-link"
+                  title={project.name}
+                  aria-current={route.page === "project" ? "page" : undefined}
+                >
+                  <ProjectMark name={project.name} size="sm" />
+                  <span className="topbar-project-name truncate">{project.name}</span>
+                </Link>
+                <span className="topbar-project-meta topbar-project-repo" title={project.repoPath}>
+                  {project.source.url ? <GithubIcon size={13} /> : <GitFork size={13} />}
+                  <span className="mono truncate">{project.repoPath}</span>
+                </span>
+                <span className="dot-sep topbar-project-sep topbar-project-sep-branches">·</span>
+                <span className="topbar-project-meta topbar-project-branches">
+                  <GitBranch size={12} />
+                  {t("project.branches", { count: project.branchCount || 0 })}
+                </span>
+                <span className="dot-sep topbar-project-sep topbar-project-sep-default">·</span>
+                <span className="topbar-project-meta topbar-project-default">
+                  {t("project.default")} <span className="mono">{project.defaultBranch}</span>
+                </span>
+                {project.dirtyCount > 0 && (
+                  <>
+                    <span className="dot-sep topbar-project-sep topbar-project-sep-warn">·</span>
+                    <span className="topbar-project-meta topbar-project-warn">
+                      {t("project.uncommitted", { count: project.dirtyCount })}
+                    </span>
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>

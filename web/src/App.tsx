@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { RouterProvider, matchRoute, useRouter } from "./lib/router";
+import { RouterProvider, matchRoute, normalizeProjectTab, useRouter } from "./lib/router";
 import { I18nProvider, useT } from "./i18n";
 import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./components/Toast";
@@ -63,6 +63,9 @@ function AppRoutes() {
 
 function AppShell() {
   const { openModal, activeModal, closeModal } = useApp();
+  const { path } = useRouter();
+  const route = matchRoute(path);
+  const workspace = route.page === "project" && normalizeProjectTab(route.tab) === "previews";
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -90,12 +93,12 @@ function AppShell() {
   }, [activeModal, closeModal, openModal]);
 
   return (
-    <div className="app-shell">
+    <div className={"app-shell" + (workspace ? " app-shell-workspace" : "")}>
       <TopNav />
-      <main className="app-main">
+      <main className={"app-main" + (workspace ? " app-main-workspace" : "")}>
         <AppRoutes />
       </main>
-      <Footer />
+      {!workspace && <Footer />}
       <ShareModal />
       <AddProjectModal />
       <ProfileModal />

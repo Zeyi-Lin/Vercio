@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lumen — AI meeting notes for teams</title>
+  <meta name="description" content="Lumen joins your calls, writes structured notes, and turns every decision into an owner and a next step. AI meeting notes for teams that would rather be doing the work." />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#fbf9f5" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <svg class="svg-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-check" viewBox="0 0 16 16">
+      <path d="M13.4 4.6 6.2 11.8 2.6 8.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 16 16">
+      <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </symbol>
+    <symbol id="i-play" viewBox="0 0 16 16">
+      <path d="M5.5 3.2v9.6l7.4-4.8z" fill="currentColor" />
+    </symbol>
+  </svg>
+
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="Lumen — home">
+        <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+          <defs>
+            <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f59e0b" />
+              <stop offset=".55" stop-color="#f43f5e" />
+              <stop offset="1" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+          <path d="M14 1.5c.8 5.7 4.8 9.7 10.5 10.5C18.8 12.8 14.8 16.8 14 22.5 13.2 16.8 9.2 12.8 3.5 12 9.2 11.2 13.2 7.2 14 1.5Z" fill="url(#brand-gradient)" />
+          <circle cx="22.6" cy="21.8" r="3.1" fill="url(#brand-gradient)" opacity=".45" />
+        </svg>
+        <span class="brand-name">Lumen</span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Primary">
+        <a href="#features">Product</a>
+        <a href="#how">How it works</a>
+        <a href="#customers">Customers</a>
+        <a href="#pricing">Pricing</a>
+      </nav>
+
+      <div class="header-actions">
+        <a class="link-signin" href="#">Sign in</a>
+        <a class="btn btn-dark btn-sm" href="#pricing">Start free</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow-pill"><span class="live-dot"></span> New in Lumen 1.4 — live notes in 40 languages</p>
+          <h1>Leave every meeting with the notes <span class="marker">already written</span>.</h1>
+          <p class="lede">Lumen joins your calls, writes structured notes, and lifts out every decision and action item — so the work keeps moving after the room empties.</p>
+          <div class="hero-actions">
+            <a class="btn btn-dark" href="#pricing">Start for free <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+            <a class="btn btn-outline" href="#how"><svg class="icon icon-play" aria-hidden="true"><use href="#i-play" /></svg> See how it works</a>
+          </div>
+          <p class="hero-fineprint">No credit card · 14-day trial · SOC 2 Type II</p>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-halo"></div>
+          <div class="app-window">
+            <div class="app-topbar">
+              <span class="app-dots"><i></i><i></i><i></i></span>
+              <span class="app-title">Design review · Q4 roadmap</span>
+              <span class="app-live"><span class="app-pulse"></span>Recording</span>
+              <span class="app-time">00:24:18</span>
+            </div>
+            <div class="app-body">
+              <aside class="app-rail">
+                <p class="rail-label">Today</p>
+                <div class="rail-item is-active"><span class="rail-dot"></span>Design review</div>
+                <div class="rail-item"><span class="rail-dot"></span>Pricing sync</div>
+                <div class="rail-item"><span class="rail-dot"></span>Weekly standup</div>
+                <div class="rail-item"><span class="rail-dot"></span>Acme kickoff</div>
+                <p class="rail-label rail-label--later">Yesterday</p>
+                <div class="rail-item"><span class="rail-dot"></span>Roadmap</div>
+                <div class="rail-spacer"></div>
+                <div class="rail-user"><span class="avatar avatar-a">MC</span> Maya</div>
+              </aside>
+
+              <div class="app-main">
+                <div class="app-main-head">
+                  <h3>Design review</h3>
+                  <span class="chip">Zoom</span>
+                </div>
+                <div class="wave" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <div class="transcript">
+                  <div class="tline">
+                    <span class="avatar avatar-a">MC</span>
+                    <div class="tline-body">
+                      <span class="tname">Maya Chen</span>
+                      <p>Okay — the onboarding rewrite ships on the 14th. <mark>Let's lock the empty states before we start.</mark></p>
+                    </div>
+                  </div>
+                  <div class="tline">
+                    <span class="avatar avatar-b">JR</span>
+                    <div class="tline-body">
+                      <span class="tname">Jonas Reed</span>
+                      <p>Agreed. I'll take the checklist flow and have a first pass ready by Friday.</p>
+                    </div>
+                  </div>
+                  <div class="tline">
+                    <span class="avatar avatar-c">PR</span>
+                    <div class="tline-body">
+                      <span class="tname">Priya Raman</span>
+                      <p>Then we move the pricing refresh to next sprint — it isn't blocking the launch.<span class="caret"></span></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="app-notes">
+                <div class="notes-head"><span>Decisions</span><span class="notes-count">3</span></div>
+                <div class="note-mini">
+                  <span class="note-check"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span>
+                  <div><p>Move pricing refresh to next sprint</p><span class="note-owner">Owner · Maya</span></div>
+                </div>
+                <div class="note-mini">
+                  <span class="note-check"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span>
+                  <div><p>Lock empty-state copy by Sept 9</p><span class="note-owner">Owner · Jonas</span></div>
+                </div>
+                <div class="note-mini">
+                  <span class="note-check"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span>
+                  <div><p>Ship onboarding rewrite Sept 14</p><span class="note-owner">Owner · Priya</span></div>
+                </div>
+                <div class="notes-sync"><span class="hash">#</span> Posted to #design</div>
+              </aside>
+            </div>
+          </div>
+
+          <div class="float-card float-card--top">
+            <span class="float-icon float-icon--spark">&#10022;</span>
+            <div><b>Summary ready</b><span>Written 1.2s after the call</span></div>
+          </div>
+          <div class="float-card float-card--bottom">
+            <span class="avatar avatar-d">PR</span>
+            <div><b>Action item assigned</b><span>Priya · due Friday</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="logo-cloud" aria-label="Customers">
+      <div class="container">
+        <p class="logo-caption">Trusted by product teams at</p>
+        <ul class="logo-row">
+          <li class="logo-item logo-item--star">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.6c.5 4.2 3.6 7.3 7.8 7.8-4.2.5-7.3 3.6-7.8 7.8-.5-4.2-3.6-7.3-7.8-7.8C6.4 8.9 9.5 5.8 10 1.6Z" fill="currentColor" /></svg>
+            Northwind
+          </li>
+          <li class="logo-item logo-item--caps">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.2 18 17H2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /></svg>
+            Keystone
+          </li>
+          <li class="logo-item logo-item--serif">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="4" height="14" rx="1" fill="currentColor" /><rect x="8" y="3" width="4" height="9" rx="1" fill="currentColor" opacity=".65" /><rect x="14" y="3" width="4" height="14" rx="1" fill="currentColor" opacity=".4" /></svg>
+            Atrium
+          </li>
+          <li class="logo-item">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.6" y="3.6" width="12.8" height="12.8" rx="2.4" transform="rotate(45 10 10)" fill="none" stroke="currentColor" stroke-width="1.7" /></svg>
+            Fieldnote
+          </li>
+          <li class="logo-item logo-item--mono">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2" fill="none" stroke="currentColor" stroke-width="1.7" /><circle cx="10" cy="10" r="2.6" fill="currentColor" /></svg>
+            halo
+          </li>
+          <li class="logo-item logo-item--caps">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 6.5h11M4.5 10h13M2.5 13.5h9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" /></svg>
+            Cascade
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">The workspace</p>
+          <h2>The hour after a meeting, given back.</h2>
+          <p class="section-lede">Most tools stop at recording. Lumen turns the conversation into decisions, owners, and next steps your team can act on.</p>
+        </div>
+
+        <div class="bento">
+          <article class="card card-wide" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Capture</p>
+              <h3>Notes that write themselves while you talk</h3>
+              <p>Speaker-labelled transcripts stream in live, in 40 languages. No bot to admit, no record button to forget.</p>
+            </div>
+            <div class="card-art">
+              <div class="art-window">
+                <div class="art-window-head">
+                  <span class="art-live"><span class="app-pulse"></span> Live transcript</span>
+                  <span class="art-lang">EN · 40 languages</span>
+                </div>
+                <div class="wave wave--sm" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="art-line">
+                  <span class="avatar avatar-a avatar--sm">MC</span>
+                  <p><b>Maya</b> Let's lock the empty states before we start.</p>
+                </div>
+                <div class="art-line">
+                  <span class="avatar avatar-b avatar--sm">JR</span>
+                  <p><b>Jonas</b> I'll have a first pass ready by Friday.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card card-narrow" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Decisions</p>
+              <h3>Decisions, separated from discussion</h3>
+              <p>Lumen picks out what was actually agreed and gives every decision an owner.</p>
+            </div>
+            <div class="card-art">
+              <div class="mini-decision"><span class="mini-check"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span><p>Move pricing refresh to next sprint</p></div>
+              <div class="mini-decision"><span class="mini-check"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span><p>Ship onboarding rewrite Sept 14</p></div>
+              <div class="mini-decision mini-decision--muted"><span class="mini-check mini-check--muted"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span><p>Offer annual billing by default</p></div>
+            </div>
+          </article>
+
+          <article class="card card-narrow" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Follow-through</p>
+              <h3>Action items that actually move</h3>
+              <p>Every commitment becomes a task in Linear, Asana, or Slack the moment it is spoken.</p>
+            </div>
+            <div class="card-art">
+              <div class="task-row"><span class="task-box is-done"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg></span><span class="task-name">Lock empty-state copy</span><span class="task-chip">Maya</span></div>
+              <div class="task-row"><span class="task-box"></span><span class="task-name">Checklist flow, first pass</span><span class="task-chip">Jonas</span></div>
+              <div class="task-row"><span class="task-box"></span><span class="task-name">Launch review deck</span><span class="task-chip">Priya</span></div>
+              <div class="task-row"><span class="task-box"></span><span class="task-name">Pricing page brief</span><span class="task-chip">Sam</span></div>
+            </div>
+          </article>
+
+          <article class="card card-wide" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Memory</p>
+              <h3>Ask your team&#8217;s memory a question</h3>
+              <p>Search across every meeting you have ever had. &#8220;What did we decide about pricing?&#8221; comes back with an answer — and the receipts.</p>
+            </div>
+            <div class="card-art">
+              <div class="search-mock">
+                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="m10.5 10.5 3.2 3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+                <span>what did we decide about pricing?</span>
+                <kbd>&#8629;</kbd>
+              </div>
+              <div class="answer-mock">
+                <p><b>Pricing refresh moves to next sprint.</b> Annual billing stays at 20% off and the Team plan keeps its price through Q4.</p>
+                <div class="answer-cites"><span>Roadmap review · Aug 12</span><span>Pricing sync · Aug 6</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card card-half" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Integrations</p>
+              <h3>Works where you already meet</h3>
+              <p>Lumen joins Zoom, Meet, and Teams calls — then sends the recap wherever the team lives.</p>
+            </div>
+            <div class="card-art">
+              <div class="integration-grid">
+                <span class="integration"><i class="int-glyph int-glyph--blue">Z</i>Zoom</span>
+                <span class="integration"><i class="int-glyph int-glyph--green">G</i>Meet</span>
+                <span class="integration"><i class="int-glyph int-glyph--indigo">T</i>Teams</span>
+                <span class="integration"><i class="int-glyph int-glyph--rose">S</i>Slack</span>
+                <span class="integration"><i class="int-glyph int-glyph--ink">N</i>Notion</span>
+                <span class="integration"><i class="int-glyph int-glyph--violet">L</i>Linear</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="card card-half" data-reveal>
+            <div class="card-copy">
+              <p class="card-kicker">Security</p>
+              <h3>Private by default</h3>
+              <p>EU or US data residency, encryption at rest and in transit, and transcripts that never train a model.</p>
+            </div>
+            <div class="card-art art-security">
+              <div class="shield">
+                <svg viewBox="0 0 48 48" aria-hidden="true">
+                  <path d="M24 4.5 40 10v12.2c0 10.4-6.8 18.1-16 21.8-9.2-3.7-16-11.4-16-21.8V10Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                  <path d="M16.5 24.2 22 29.7l9.8-10.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </div>
+              <div class="security-badges"><span>SOC 2 Type II</span><span>GDPR</span><span>SSO / SCIM</span></div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-how" id="how">
+      <div class="container split">
+        <div class="split-intro" data-reveal>
+          <p class="eyebrow">Setup</p>
+          <h2>Three minutes to set up. Then never think about it again.</h2>
+          <p class="section-lede">No recorder to start, no bot to admit, no notes to write up afterwards.</p>
+        </div>
+        <ol class="steps">
+          <li class="step" data-reveal>
+            <span class="step-num">01</span>
+            <h3>Connect your calendar</h3>
+            <p>Lumen finds the meetings you are already in and joins with your name on the list.</p>
+          </li>
+          <li class="step" data-reveal>
+            <span class="step-num">02</span>
+            <h3>Show up and talk</h3>
+            <p>Notes start themselves, speaker labels stay accurate, and the room empties on time.</p>
+          </li>
+          <li class="step" data-reveal>
+            <span class="step-num">03</span>
+            <h3>Leave with the work</h3>
+            <p>Within 30 seconds: a summary, the decisions, the owners, and a recap your team will actually read.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="band" id="customers">
+      <div class="container band-grid">
+        <figure class="quote" data-reveal>
+          <blockquote>&#8220;We stopped assigning a note-taker entirely. Lumen&#8217;s recap is closer to what we actually agreed than anything a human wrote.&#8221;</blockquote>
+          <figcaption>
+            <span class="avatar avatar-lg avatar-a">MC</span>
+            <span><b>Maya Chen</b> VP Product, Northwind</span>
+          </figcaption>
+        </figure>
+        <dl class="stats" data-reveal>
+          <div class="stat"><dt>Saved per person, weekly</dt><dd>4.2<span>hrs</span></dd></div>
+          <div class="stat"><dt>Transcript accuracy</dt><dd>98.4<span>%</span></dd></div>
+          <div class="stat"><dt>Languages supported</dt><dd>40<span>+</span></dd></div>
+          <div class="stat"><dt>Teams on Lumen</dt><dd>12k<span>+</span></dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section pricing-v2" id="pricing">
+      <div class="container">
+        <div class="section-head section-head--center" data-reveal>
+          <p class="eyebrow">Pricing</p>
+          <h2>Plans that keep up with your meeting load.</h2>
+          <p class="section-lede">Start free, add seats when the team is ready. Switch to annual billing and get two months on us.</p>
+        </div>
+
+        <div class="billing-row" data-reveal>
+          <div class="billing-toggle" role="group" aria-label="Billing period" data-billing-toggle data-active="monthly">
+            <button type="button" class="billing-btn is-active" data-billing="monthly" aria-pressed="true">Monthly</button>
+            <button type="button" class="billing-btn" data-billing="annual" aria-pressed="false">Annual <span class="billing-save">−20%</span></button>
+          </div>
+          <p class="billing-note" data-billing-note aria-live="polite">Billed monthly. Cancel anytime.</p>
+        </div>
+
+        <div class="price-grid">
+          <article class="plan" data-reveal>
+            <header class="plan-head">
+              <h3>Starter</h3>
+              <p class="plan-desc">For trying Lumen on your own meetings.</p>
+            </header>
+            <p class="plan-price">
+              <span class="amount"><span class="currency">$</span><span class="price-value" data-monthly="0" data-annual="0">0</span></span>
+              <span class="unit">forever</span>
+            </p>
+            <p class="plan-billing" data-billed data-monthly-label="Free plan, no card" data-annual-label="Free plan, no card">Free plan, no card</p>
+            <a class="btn btn-outline btn-block" href="#">Start for free</a>
+            <ul class="plan-features">
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>10 meetings a month</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>60-minute meeting limit</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>English transcripts</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>7-day meeting history</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Calendar sync</li>
+            </ul>
+          </article>
+
+          <article class="plan plan--featured" data-reveal>
+            <span class="plan-badge">Most popular</span>
+            <header class="plan-head">
+              <h3>Team</h3>
+              <p class="plan-desc">For teams that live in meetings.</p>
+            </header>
+            <p class="plan-price">
+              <span class="amount"><span class="currency">$</span><span class="price-value" data-monthly="14" data-annual="11">14</span></span>
+              <span class="unit">/ seat / month</span>
+            </p>
+            <p class="plan-billing" data-billed data-monthly-label="Billed monthly" data-annual-label="Billed annually · $132 per seat / year">Billed monthly</p>
+            <a class="btn btn-light btn-block" href="#">Start 14-day trial</a>
+            <ul class="plan-features">
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Unlimited meetings</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Live notes in 40 languages</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Decisions and action items</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Slack, Notion and Linear sync</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>12-month meeting history</li>
+            </ul>
+          </article>
+
+          <article class="plan" data-reveal>
+            <header class="plan-head">
+              <h3>Business</h3>
+              <p class="plan-desc">For companies with a lot to remember.</p>
+            </header>
+            <p class="plan-price">
+              <span class="amount"><span class="currency">$</span><span class="price-value" data-monthly="29" data-annual="23">29</span></span>
+              <span class="unit">/ seat / month</span>
+            </p>
+            <p class="plan-billing" data-billed data-monthly-label="Billed monthly" data-annual-label="Billed annually · $276 per seat / year">Billed monthly</p>
+            <a class="btn btn-outline btn-block" href="#">Talk to sales</a>
+            <ul class="plan-features">
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Everything in Team</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>SSO and SCIM provisioning</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>EU or US data residency</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Custom retention policies</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg>Priority support</li>
+            </ul>
+          </article>
+        </div>
+
+        <p class="price-note">Prices in USD · Seats can be added or removed at any time · Every paid plan starts with a 14-day trial — no credit card required.</p>
+
+        <div class="enterprise-strip" data-reveal>
+          <div>
+            <h3>Rolling Lumen out across the company?</h3>
+            <p>Volume pricing, security review support, and a dedicated success manager for 250+ seats.</p>
+          </div>
+          <a class="btn btn-outline" href="#">Talk to sales</a>
+        </div>
+
+        <div class="faq" data-reveal>
+          <div class="faq-intro">
+            <p class="eyebrow">FAQ</p>
+            <h3>Questions, answered</h3>
+            <p>Can&#8217;t find what you need? <a href="#">Write to us</a> — a human replies within a day.</p>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>Can I try Lumen before paying?<span class="faq-icon" aria-hidden="true"></span></summary>
+              <div class="faq-body"><p>Every paid plan starts with a 14-day trial that includes the full Team feature set. The Starter plan is free forever, so you can keep using Lumen for personal meetings after the trial ends.</p></div>
+            </details>
+            <details class="faq-item">
+              <summary>What counts as a meeting?<span class="faq-icon" aria-hidden="true"></span></summary>
+              <div class="faq-body"><p>Any calendar event with two or more attendees that Lumen is invited to. Recordings, voice memos, and one-on-ones are all supported. Starter caps each meeting at 60 minutes and 10 meetings per month.</p></div>
+            </details>
+            <details class="faq-item">
+              <summary>How does per-seat billing work when people leave?<span class="faq-icon" aria-hidden="true"></span></summary>
+              <div class="faq-body"><p>Seats are billed in advance. Remove someone mid-cycle and the seat is freed for a teammate right away; on annual plans the unused credit is applied at renewal. Admins can add or remove seats from the billing page without talking to us.</p></div>
+            </details>
+            <details class="faq-item">
+              <summary>Can we switch between monthly and annual billing?<span class="faq-icon" aria-hidden="true"></span></summary>
+              <div class="faq-body"><p>Yes, at any time. Moving to annual applies the 20% discount immediately and prorates the rest of the current month. Moving back to monthly starts with the next billing cycle.</p></div>
+            </details>
+            <details class="faq-item">
+              <summary>Where is our data stored?<span class="faq-icon" aria-hidden="true"></span></summary>
+              <div class="faq-body"><p>EU customers keep meeting data in Frankfurt; everyone else in us-east-1. Transcripts and recordings are encrypted at rest with AES-256 and in transit with TLS 1.3, and are never used to train models.</p></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <div class="closing-glow" aria-hidden="true"></div>
+      <div class="container closing-inner" data-reveal>
+        <h2>Your next meeting is in 30 minutes.</h2>
+        <p class="lede">It could end with the notes already written and every decision already owned.</p>
+        <div class="hero-actions closing-actions">
+          <a class="btn btn-dark" href="#pricing">Start for free <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+          <a class="btn btn-outline" href="#">Book a demo</a>
+        </div>
+        <p class="hero-fineprint">Set up in 3 minutes · Works with Google Calendar, Outlook and Zoom</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="Lumen — home">
+          <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+            <path d="M14 1.5c.8 5.7 4.8 9.7 10.5 10.5C18.8 12.8 14.8 16.8 14 22.5 13.2 16.8 9.2 12.8 3.5 12 9.2 11.2 13.2 7.2 14 1.5Z" fill="currentColor" />
+            <circle cx="22.6" cy="21.8" r="3.1" fill="currentColor" opacity=".4" />
+          </svg>
+          <span class="brand-name">Lumen</span>
+        </a>
+        <p>AI meeting notes for teams that would rather be doing the work.</p>
+        <p class="status-pill"><span class="live-dot"></span> All systems operational</p>
+      </div>
+
+      <nav class="footer-col" aria-label="Product">
+        <h4>Product</h4>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#">Changelog</a>
+      </nav>
+      <nav class="footer-col" aria-label="Company">
+        <h4>Company</h4>
+        <a href="#">About</a>
+        <a href="#customers">Customers</a>
+        <a href="#">Careers</a>
+        <a href="#">Press</a>
+      </nav>
+      <nav class="footer-col" aria-label="Resources">
+        <h4>Resources</h4>
+        <a href="#">Docs</a>
+        <a href="#">API</a>
+        <a href="#">Guides</a>
+        <a href="#">Status</a>
+      </nav>
+      <nav class="footer-col" aria-label="Legal">
+        <h4>Legal</h4>
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Security</a>
+        <a href="#">DPA</a>
+      </nav>
+    </div>
+
+    <div class="container footer-bottom">
+      <p>© <span data-year>2026</span> Lumen Labs, Inc. All rights reserved.</p>
+      <ul class="socials">
+        <li>
+          <a href="#" aria-label="Lumen on X">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.66l-5.21-6.82-5.97 6.82H1.67l7.73-8.84L1.25 2.25H8.08l4.71 6.23 5.45-6.23Zm-1.16 17.52h1.83L7.08 4.13H5.12l11.96 15.64Z" fill="currentColor" /></svg>
+          </a>
+        </li>
+        <li>
+          <a href="#" aria-label="Lumen on GitHub">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.1.82-.27.82-.58v-2.02c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .3Z" fill="currentColor" /></svg>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

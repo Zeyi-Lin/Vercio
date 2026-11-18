@@ -1,0 +1,26 @@
+[
+  {
+    "branch": "main",
+    "variant": "main",
+    "message": "feat: launch Lumen marketing site",
+    "daysAgo": 21
+  },
+  {
+    "branch": "feat/aurora-hero",
+    "variant": "aurora-hero",
+    "message": "feat(hero): animated aurora mesh, 2.0 launch copy and logo cloud",
+    "daysAgo": 6
+  },
+  {
+    "branch": "feat/pricing-v2",
+    "variant": "pricing-v2",
+    "message": "feat(pricing): monthly/annual toggle, plan highlight and FAQ",
+    "daysAgo": 3
+  },
+  {
+    "branch": "fix/mobile-nav",
+    "variant": "mobile-nav",
+    "message": "fix(nav): working mobile menu with escape handling and focus management",
+    "daysAgo": 1
+  }
+]

@@ -99,9 +99,11 @@ export function ProjectOverview({
     }
   };
 
-  const sourceLabel = project.source.url
-    ? project.source.url.replace(/^https?:\/\//, "")
-    : truncateMiddle(project.repoPath, 40);
+  const sourceLabel = project.isDemo
+    ? "Bundled demo repository"
+    : project.source.url
+      ? project.source.url.replace(/^https?:\/\//, "")
+      : truncateMiddle(project.repoPath, 40);
 
   return (
     <div className="overview-grid">

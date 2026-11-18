@@ -1,5 +1,6 @@
 import { Laptop, Radio, Wifi } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { copyText } from "../lib/format";
 import { useToast } from "./Toast";
 import { Button, CopyButton, Modal } from "./ui";
@@ -7,6 +8,7 @@ import { Button, CopyButton, Modal } from "./ui";
 export function ShareModal() {
   const { activeModal, closeModal, systemInfo } = useApp();
   const { pushToast } = useToast();
+  const t = useT();
   const open = activeModal === "share";
 
   const lanUrls = systemInfo?.lanUrls || [];
@@ -16,26 +18,26 @@ export function ShareModal() {
   const copyAll = async () => {
     if (!primary) return;
     await copyText(primary);
-    pushToast("Network link copied", "success");
+    pushToast(t("share.copiedToast"), "success");
   };
 
   return (
     <Modal
       open={open}
       onClose={closeModal}
-      title="Share on your network"
-      description="Open Vercio from any device on this Wi-Fi. Branch previews stream live from this machine — nothing is uploaded."
+      title={t("share.title")}
+      description={t("share.description")}
       footer={
         <>
           <span className="hint" style={{ marginRight: "auto" }}>
             <Radio size={11} style={{ display: "inline", marginRight: 5 }} />
-            Same Wi-Fi required
+            {t("share.sameWifiRequired")}
           </span>
           <Button variant="secondary" onClick={closeModal}>
-            Done
+            {t("common.done")}
           </Button>
           <Button variant="primary" onClick={copyAll} disabled={!hasLan}>
-            Copy network link
+            {t("share.copyNetworkLink")}
           </Button>
         </>
       }
@@ -43,16 +45,13 @@ export function ShareModal() {
       {!hasLan ? (
         <div className="alert">
           <Wifi size={14} />
-          <span>
-            No local network address was detected. Connect this machine to Wi-Fi and make sure it is
-            reachable from other devices.
-          </span>
+          <span>{t("share.noLan")}</span>
         </div>
       ) : (
         <div className="share-visual">
           <div className="qr-card">
             {systemInfo?.qrDataUrl ? (
-              <img src={systemInfo.qrDataUrl} alt={"QR code for " + primary} width={188} height={188} />
+              <img src={systemInfo.qrDataUrl} alt={t("share.qrAlt", { url: primary })} width={188} height={188} />
             ) : (
               <div className="skeleton" style={{ width: 188, height: 188 }} />
             )}
@@ -60,13 +59,13 @@ export function ShareModal() {
           <div className="share-details">
             <div className="share-network">
               <span className="share-chip-dot" />
-              <span>{systemInfo?.wifiName ? systemInfo.wifiName : "Local network"}</span>
+              <span>{systemInfo?.wifiName ? systemInfo.wifiName : t("share.localNetwork")}</span>
             </div>
             <a className="share-url" href={primary} target="_blank" rel="noreferrer">
               {primary.replace(/^https?:\/\//, "")}
             </a>
             <p className="hint" style={{ maxWidth: 280 }}>
-              Scan the QR code or open the address on a phone or a teammate&apos;s laptop.
+              {t("share.scanHint")}
             </p>
           </div>
         </div>
@@ -85,7 +84,7 @@ export function ShareModal() {
         {systemInfo && (
           <div className="share-row">
             <span className="share-row-label">
-              <Laptop size={13} /> This machine
+              <Laptop size={13} /> {t("share.thisMachine")}
             </span>
             <span className="share-row-value mono">{systemInfo.localUrl}</span>
             <CopyButton value={systemInfo.localUrl} label="" className="btn btn-sm btn-ghost" />
@@ -94,8 +93,7 @@ export function ShareModal() {
       </div>
 
       <p className="hint" style={{ marginTop: 16 }}>
-        Vercio is bound to port {systemInfo?.port ?? "—"} on all interfaces. Previews use their own
-        isolated ports and are proxied through stable <span className="mono">/preview/</span> URLs.
+        {t("share.boundHint", { port: systemInfo?.port ?? "—" })}
       </p>
     </Modal>
   );

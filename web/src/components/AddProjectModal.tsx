@@ -3,6 +3,7 @@ import { FolderGit2, Loader2, Sparkles } from "lucide-react";
 import { GithubIcon } from "./icons";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { useRouter } from "../lib/router";
 import { useToast } from "./Toast";
 import { Button, Field, Modal, TextInput } from "./ui";
@@ -14,6 +15,7 @@ export function AddProjectModal() {
   const open = activeModal === "add-project";
   const { navigate } = useRouter();
   const { pushToast } = useToast();
+  const t = useT();
   const [tab, setTab] = useState<Tab>("github");
   const [source, setSource] = useState("");
   const [name, setName] = useState("");
@@ -30,7 +32,7 @@ export function AddProjectModal() {
 
   const submit = async () => {
     if (!source.trim()) {
-      setError(tab === "github" ? "Enter a GitHub repository" : "Enter a local repository path");
+      setError(tab === "github" ? t("add.emptyGithub") : t("add.emptyLocal"));
       return;
     }
     setBusy("import");
@@ -41,13 +43,13 @@ export function AddProjectModal() {
       closeModal();
       pushToast(
         project.status === "importing"
-          ? "Importing " + project.name + " from GitHub"
-          : "Added " + project.name,
+          ? t("add.importingToast", { name: project.name })
+          : t("add.addedToast", { name: project.name }),
         "success"
       );
       navigate("/p/" + project.id);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Could not add this project");
+      setError(submitError instanceof Error ? submitError.message : t("add.error"));
     } finally {
       setBusy(null);
     }
@@ -60,10 +62,10 @@ export function AddProjectModal() {
       const { project } = await api.createDemoProject();
       await refresh();
       closeModal();
-      pushToast("Demo project ready — try switching branches", "success");
+      pushToast(t("add.demoReadyToast"), "success");
       navigate("/p/" + project.id + "/previews");
     } catch (demoError) {
-      setError(demoError instanceof Error ? demoError.message : "Could not load the demo project");
+      setError(demoError instanceof Error ? demoError.message : t("add.demoError"));
     } finally {
       setBusy(null);
     }
@@ -73,8 +75,8 @@ export function AddProjectModal() {
     <Modal
       open={open}
       onClose={closeModal}
-      title="New project"
-      description="Point Vercio at a repository. Every branch becomes a live preview."
+      title={t("add.title")}
+      description={t("add.description")}
       footer={
         <>
           <button
@@ -84,13 +86,13 @@ export function AddProjectModal() {
             disabled={busy !== null}
           >
             {busy === "demo" ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-            {busy === "demo" ? "Preparing demo…" : "Load demo project"}
+            {busy === "demo" ? t("add.preparingDemo") : t("add.loadDemo")}
           </button>
           <Button onClick={closeModal} disabled={busy !== null}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button variant="primary" onClick={submit} loading={busy === "import"}>
-            {tab === "github" ? "Import repository" : "Add project"}
+            {tab === "github" ? t("add.importRepository") : t("add.addProject")}
           </Button>
         </>
       }
@@ -105,7 +107,7 @@ export function AddProjectModal() {
             setError("");
           }}
         >
-          <GithubIcon size={13} /> GitHub repository
+          <GithubIcon size={13} /> {t("add.githubTab")}
         </button>
         <button
           role="tab"
@@ -116,25 +118,20 @@ export function AddProjectModal() {
             setError("");
           }}
         >
-          <FolderGit2 size={14} /> Local folder
+          <FolderGit2 size={14} /> {t("add.localTab")}
         </button>
       </div>
 
       <div className="add-project-body">
         {tab === "github" ? (
           <Field
-            label="Repository"
-            hint={
-              <>
-                Paste a URL or <span className="mono">owner/repo</span>. Vercio clones with your local
-                git credentials — private repositories work too.
-              </>
-            }
+            label={t("add.repoLabel")}
+            hint={t("add.repoHint")}
           >
             <TextInput
               value={source}
               onChange={(event) => setSource(event.target.value)}
-              placeholder="acme/marketing-site or https://github.com/acme/site"
+              placeholder={t("add.repoPlaceholder")}
               onKeyDown={(event) => {
                 if (event.key === "Enter") submit();
               }}
@@ -143,13 +140,13 @@ export function AddProjectModal() {
           </Field>
         ) : (
           <Field
-            label="Repository path"
-            hint="Any git repository on this machine. Vercio creates isolated worktrees — your working copy stays untouched."
+            label={t("add.pathLabel")}
+            hint={t("add.pathHint")}
           >
             <TextInput
               value={source}
               onChange={(event) => setSource(event.target.value)}
-              placeholder="/Users/you/code/acme-site"
+              placeholder={t("add.pathPlaceholder")}
               onKeyDown={(event) => {
                 if (event.key === "Enter") submit();
               }}
@@ -158,11 +155,11 @@ export function AddProjectModal() {
           </Field>
         )}
 
-        <Field label={<>Project name <span className="muted">(optional)</span></>}>
+        <Field label={<>{t("add.nameLabel")} <span className="muted">({t("common.optional")})</span></>}>
           <TextInput
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Auto-detected from the repository"
+            placeholder={t("add.namePlaceholder")}
           />
         </Field>
 
@@ -170,7 +167,7 @@ export function AddProjectModal() {
 
         <div className="add-project-hint">
           <span className="add-project-dot" />
-          Previews run locally. Nothing leaves your machine or network.
+          {t("add.localNote")}
         </div>
       </div>
     </Modal>

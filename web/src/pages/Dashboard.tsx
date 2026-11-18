@@ -10,6 +10,7 @@ import {
   Wifi,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { api } from "../lib/api";
 import { useRouter, Link } from "../lib/router";
 import type { Deployment, Project } from "../lib/types";
@@ -27,7 +28,7 @@ function latestDeployments(deployments: Deployment[]): Map<string, Deployment> {
   return map;
 }
 
-function HeroMock() {
+function HeroMock({ t }: { t: ReturnType<typeof useT> }) {
   return (
     <div className="hero-mock" aria-hidden="true">
       <div className="hero-mock-glow" />
@@ -39,12 +40,12 @@ function HeroMock() {
           <span className="hero-mock-url mono">vercio.local / preview / aurora-hero</span>
           <span className="hero-mock-live">
             <span className="share-chip-dot" />
-            live
+            {t("heroMock.live")}
           </span>
         </div>
         <div className="hero-mock-body">
           <div className="hero-mock-side">
-            <div className="hero-mock-side-label">Branches</div>
+            <div className="hero-mock-side-label">{t("heroMock.branches")}</div>
             {[
               { name: "main", active: false },
               { name: "feat/aurora-hero", active: true },
@@ -65,7 +66,7 @@ function HeroMock() {
             <div className="hero-mock-aurora hero-mock-aurora-a" />
             <div className="hero-mock-aurora hero-mock-aurora-b" />
             <div className="hero-mock-page">
-              <div className="hero-mock-badge">New</div>
+              <div className="hero-mock-badge">{t("heroMock.new")}</div>
               <div className="hero-mock-heading" />
               <div className="hero-mock-heading short" />
               <div className="hero-mock-copy" />
@@ -80,10 +81,10 @@ function HeroMock() {
       </div>
       <div className="hero-mock-pill hero-mock-pill-a">
         <span className="share-chip-dot" />
-        Preview ready <span className="mono">1.2s</span>
+        {t("heroMock.previewReady")} <span className="mono">1.2s</span>
       </div>
       <div className="hero-mock-pill hero-mock-pill-b">
-        <Wifi size={11} /> Shared on Wi-Fi
+        <Wifi size={11} /> {t("heroMock.sharedWifi")}
       </div>
     </div>
   );
@@ -123,6 +124,7 @@ export function Dashboard() {
   const { overview, systemInfo, loading, error, openModal, refresh, stats } = useApp();
   const { navigate } = useRouter();
   const { pushToast } = useToast();
+  const t = useT();
   const [demoBusy, setDemoBusy] = useState(false);
 
   const projects = overview?.projects || [];
@@ -135,10 +137,10 @@ export function Dashboard() {
     try {
       const { project } = await api.createDemoProject();
       await refresh();
-      pushToast("Demo project ready — click any branch to preview it", "success");
+      pushToast(t("dashboard.demoReady"), "success");
       navigate("/p/" + project.id + "/previews");
     } catch (demoError) {
-      pushToast(demoError instanceof Error ? demoError.message : "Could not load demo", "error");
+      pushToast(demoError instanceof Error ? demoError.message : t("dashboard.demoError"), "error");
     } finally {
       setDemoBusy(false);
     }
@@ -150,9 +152,9 @@ export function Dashboard() {
     return (
       <div className="container page">
         <div className="alert alert-error" style={{ marginTop: 24 }}>
-          Could not reach the Vercio server: {error}
+          {t("dashboard.serverError", { error })}
           <Button size="sm" variant="secondary" style={{ marginLeft: "auto" }} onClick={() => refresh()}>
-            Retry
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -165,19 +167,16 @@ export function Dashboard() {
         <section className="hero">
           <div className="hero-eyebrow">
             <span className="hero-pill">
-              <span className="share-chip-dot" /> Local-first
+              <span className="share-chip-dot" /> {t("dashboard.hero.localFirst")}
             </span>
-            <span className="hero-eyebrow-text">Vercel-style frontend collaboration, on your machine</span>
+            <span className="hero-eyebrow-text">{t("dashboard.hero.eyebrow")}</span>
           </div>
           <h1 className="hero-title">
-            Every branch.
+            {t("dashboard.hero.title1")}
             <br />
-            <span className="hero-accent">One click away.</span>
+            <span className="hero-accent">{t("dashboard.hero.title2")}</span>
           </h1>
-          <p className="hero-sub">
-            Point Vercio at any git repository and preview its frontend branch by branch — then share
-            it with everyone on your Wi-Fi. No cloud, no deploys, no waiting.
-          </p>
+          <p className="hero-sub">{t("dashboard.hero.sub")}</p>
           <div className="hero-actions">
             <Button
               variant="primary"
@@ -185,7 +184,7 @@ export function Dashboard() {
               icon={<Plus size={16} />}
               onClick={() => openModal("add-project")}
             >
-              Add project
+              {t("dashboard.addProject")}
             </Button>
             <Button
               size="lg"
@@ -194,51 +193,42 @@ export function Dashboard() {
               loading={demoBusy}
               onClick={loadDemo}
             >
-              Load demo project
+              {t("add.loadDemo")}
             </Button>
           </div>
           <div className="hero-note">
-            <span>Git worktrees</span>
+            <span>{t("dashboard.feature1Title")}</span>
             <span className="dot-sep">·</span>
-            <span>Instant branch previews</span>
+            <span>{t("dashboard.stats.live")}</span>
             <span className="dot-sep">·</span>
-            <span>Shared over Wi-Fi</span>
+            <span>{t("dashboard.feature2Title")}</span>
             <span className="dot-sep">·</span>
-            <span>Product notes built in</span>
+            <span>{t("dashboard.feature3Title")}</span>
           </div>
-          <HeroMock />
+          <HeroMock t={t} />
         </section>
 
         <div className="feature-grid">
           <div className="feature-card">
             <span className="feature-icon"><GitBranch size={17} /></span>
-            <h3>Branches, not builds</h3>
-            <p>
-              Every branch is checked out into an isolated git worktree and previewed live. Switch
-              branches with one click while your working copy stays untouched.
-            </p>
+            <h3>{t("dashboard.feature1Title")}</h3>
+            <p>{t("dashboard.feature1Desc")}</p>
           </div>
           <div className="feature-card">
             <span className="feature-icon"><Wifi size={17} /></span>
-            <h3>Collaborate on Wi-Fi</h3>
-            <p>
-              Share a QR code and your teammates can open the same dashboard, inspect any branch or
-              leave comments — all on the local network.
-            </p>
+            <h3>{t("dashboard.feature2Title")}</h3>
+            <p>{t("dashboard.feature2Desc")}</p>
           </div>
           <div className="feature-card">
             <span className="feature-icon"><MessageSquare size={17} /></span>
-            <h3>Context that stays</h3>
-            <p>
-              Write the product brief, keep design notes next to the code and discuss each branch
-              without another SaaS subscription.
-            </p>
+            <h3>{t("dashboard.feature3Title")}</h3>
+            <p>{t("dashboard.feature3Desc")}</p>
           </div>
         </div>
 
         <div className="empty-footer-note">
           <ShieldCheck size={14} />
-          Vercio runs on this machine. Your code and notes never leave the local network.
+          {t("dashboard.shieldNote")}
         </div>
       </div>
     );
@@ -250,12 +240,10 @@ export function Dashboard() {
         <div>
           <div className="eyebrow">
             <span className={"eyebrow-dot" + (online ? " live" : "")} />
-            {online ? "Live on your network" : "Local workspace"}
+            {online ? t("dashboard.eyebrowLive") : t("dashboard.eyebrowLocal")}
           </div>
-          <h1 className="dashboard-title">Overview</h1>
-          <p className="dashboard-sub">
-            Preview any branch of any repository — shared instantly with your team on Wi-Fi.
-          </p>
+          <h1 className="dashboard-title">{t("dashboard.title")}</h1>
+          <p className="dashboard-sub">{t("dashboard.subtitle")}</p>
         </div>
         <div className="dashboard-actions">
           <Button
@@ -263,7 +251,7 @@ export function Dashboard() {
             icon={<Wifi size={14} />}
             onClick={() => openModal("share")}
           >
-            Share
+            {t("dashboard.share")}
           </Button>
           <Button
             variant="secondary"
@@ -271,36 +259,36 @@ export function Dashboard() {
             loading={demoBusy}
             onClick={loadDemo}
           >
-            Demo
+            {t("dashboard.demo")}
           </Button>
           <Button
             variant="primary"
             icon={<Plus size={15} />}
             onClick={() => openModal("add-project")}
           >
-            Add project
+            {t("dashboard.addProject")}
           </Button>
         </div>
       </header>
 
       <div className="stats-strip">
         <div className="stat">
-          <span className="stat-label">Projects</span>
+          <span className="stat-label">{t("dashboard.stats.projects")}</span>
           <span className="stat-value">{stats?.projects ?? projects.length}</span>
         </div>
         <div className="stat">
-          <span className="stat-label">Branches</span>
+          <span className="stat-label">{t("dashboard.stats.branches")}</span>
           <span className="stat-value">{stats?.branches ?? "—"}</span>
         </div>
         <div className="stat">
-          <span className="stat-label">Live previews</span>
+          <span className="stat-label">{t("dashboard.stats.live")}</span>
           <span className="stat-value">
             {stats?.running ?? 0}
             {(stats?.running ?? 0) > 0 && <span className="stat-live"><span className="share-chip-dot" /></span>}
           </span>
         </div>
         <div className="stat">
-          <span className="stat-label">Notes & comments</span>
+          <span className="stat-label">{t("dashboard.stats.notes")}</span>
           <span className="stat-value">{(stats?.notes ?? 0) + (stats?.comments ?? 0)}</span>
         </div>
       </div>
@@ -308,11 +296,11 @@ export function Dashboard() {
       <section className="section">
         <div className="section-head">
           <div>
-            <h2 className="section-title">Projects</h2>
-            <p className="section-sub">Repositories connected to this workspace.</p>
+            <h2 className="section-title">{t("dashboard.projects")}</h2>
+            <p className="section-sub">{t("dashboard.projectsSubtitle")}</p>
           </div>
           <Button size="sm" variant="secondary" icon={<FolderInput size={13} />} onClick={() => openModal("add-project")}>
-            New project
+            {t("dashboard.newProject")}
           </Button>
         </div>
         <div className="project-grid">
@@ -325,8 +313,8 @@ export function Dashboard() {
           ))}
           <button className="project-add-card" onClick={() => openModal("add-project")}>
             <span className="project-add-icon"><Plus size={17} /></span>
-            <span className="project-add-title">New project</span>
-            <span className="project-add-desc">Import from GitHub or a local folder</span>
+            <span className="project-add-title">{t("dashboard.newProject")}</span>
+            <span className="project-add-desc">{t("dashboard.newProjectDesc")}</span>
           </button>
         </div>
       </section>
@@ -335,23 +323,23 @@ export function Dashboard() {
         <section className="card deployments-card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Recent deployments</h2>
-              <p className="card-subtitle">Every branch you preview becomes a deployment.</p>
+              <h2 className="card-title">{t("dashboard.recent")}</h2>
+              <p className="card-subtitle">{t("dashboard.recentSubtitle")}</p>
             </div>
             <span className="live-indicator">
               <span className="share-chip-dot" />
-              Live
+              {t("dashboard.live")}
             </span>
           </div>
           <div className="card-body card-body-flush">
             <DeploymentList
               deployments={deployments.slice(0, 8)}
-              emptyTitle="No previews yet"
+              emptyTitle={t("dashboard.recentEmptyTitle")}
               emptyDescription={
                 <>
-                  Open a project and click a branch to spin up its first preview.{" "}
+                  {t("dashboard.recentEmptyDesc")}{" "}
                   <Link to={"/p/" + projects[0].id + "/previews"} className="text-link">
-                    Start with {projects[0].name} <ArrowRight size={12} />
+                    {t("dashboard.startWith", { name: projects[0].name })} <ArrowRight size={12} />
                   </Link>
                 </>
               }
@@ -363,8 +351,8 @@ export function Dashboard() {
           <section className="card local-card">
             <div className="card-head card-head-flush">
               <div>
-                <h2 className="card-title">Local by design</h2>
-                <p className="card-subtitle">The whole workspace runs on this machine.</p>
+                <h2 className="card-title">{t("dashboard.localTitle")}</h2>
+                <p className="card-subtitle">{t("dashboard.localSubtitle")}</p>
               </div>
               <ShieldCheck size={16} className="muted" />
             </div>
@@ -372,22 +360,22 @@ export function Dashboard() {
               <div className="local-item">
                 <GitBranch size={14} />
                 <div>
-                  <strong>Isolated worktrees</strong>
-                  <span>Previews never touch your working copy.</span>
+                  <strong>{t("dashboard.localWorktrees")}</strong>
+                  <span>{t("dashboard.localWorktreesDesc")}</span>
                 </div>
               </div>
               <div className="local-item">
                 <ShieldCheck size={14} />
                 <div>
-                  <strong>No uploads</strong>
-                  <span>Code, branches and notes stay local.</span>
+                  <strong>{t("dashboard.localUploads")}</strong>
+                  <span>{t("dashboard.localUploadsDesc")}</span>
                 </div>
               </div>
               <div className="local-item">
                 <MessageSquare size={14} />
                 <div>
-                  <strong>Decisions live with the code</strong>
-                  <span>Briefs, notes and comments per branch.</span>
+                  <strong>{t("dashboard.localDecisions")}</strong>
+                  <span>{t("dashboard.localDecisionsDesc")}</span>
                 </div>
               </div>
             </div>

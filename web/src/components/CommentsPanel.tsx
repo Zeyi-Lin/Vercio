@@ -12,6 +12,7 @@ import { api } from "../lib/api";
 import { initials, relativeTime } from "../lib/format";
 import { Link } from "../lib/router";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import type { Comment, Note, Project } from "../lib/types";
 import { useToast } from "./Toast";
 import { Button, EmptyState, Spinner, Skeleton } from "./ui";
@@ -43,6 +44,7 @@ export function CommentsPanel({
 }) {
   const { authorName, openModal } = useApp();
   const { pushToast } = useToast();
+  const t = useT();
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,9 +88,9 @@ export function CommentsPanel({
       setComments((current) => [...(current || []), result.comment]);
       setBody("");
       onCountChange((comments?.length || 0) + 1);
-      pushToast("Comment posted", "success");
+      pushToast(t("discussion.posted"), "success");
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not post comment", "error");
+      pushToast(error instanceof Error ? error.message : t("discussion.error"), "error");
     } finally {
       setBusy(false);
     }
@@ -101,7 +103,7 @@ export function CommentsPanel({
       setComments(next);
       onCountChange(next.length);
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not delete comment", "error");
+      pushToast(error instanceof Error ? error.message : t("discussion.deleteError"), "error");
     }
   };
 
@@ -112,7 +114,7 @@ export function CommentsPanel({
       <div className="discussion-head">
         <div>
           <h2 className="discussion-title">
-            <MessageSquare size={14} /> Discussion
+            <MessageSquare size={14} /> {t("discussion.title")}
           </h2>
           <p className="discussion-subtitle mono">{branch}</p>
         </div>
@@ -124,12 +126,12 @@ export function CommentsPanel({
               await load();
               setRefreshing(false);
             }}
-            aria-label="Refresh discussion"
-            title="Refresh discussion"
+            aria-label={t("discussion.refresh")}
+            title={t("discussion.refresh")}
           >
             {refreshing ? <Spinner /> : <RefreshCw size={14} />}
           </button>
-          <button className="icon-btn" onClick={onClose} aria-label="Close discussion" title="Close discussion">
+          <button className="icon-btn" onClick={onClose} aria-label={t("discussion.close")} title={t("discussion.close")}>
             <X size={15} />
           </button>
         </div>
@@ -137,7 +139,7 @@ export function CommentsPanel({
 
       {linkedNotes.length > 0 && (
         <div className="discussion-linked">
-          <span className="discussion-section-label">Linked notes</span>
+          <span className="discussion-section-label">{t("discussion.linkedNotes")}</span>
           {linkedNotes.map((note) => (
             <Link
               key={note.id}
@@ -166,8 +168,8 @@ export function CommentsPanel({
         {comments && comments.length === 0 && (
           <EmptyState
             icon={<MessageSquare size={17} />}
-            title="Start the conversation"
-            description="Leave feedback on this branch. Everyone on the network sees it instantly."
+            title={t("discussion.emptyTitle")}
+            description={t("discussion.emptyDesc")}
           />
         )}
         {comments?.map((comment) => (
@@ -178,7 +180,7 @@ export function CommentsPanel({
                 <span className="comment-author">{comment.author}</span>
                 <time>{relativeTime(comment.createdAt)}</time>
                 {comment.clientId === idRef.current && (
-                  <button className="comment-delete" onClick={() => remove(comment)} title="Delete comment">
+                  <button className="comment-delete" onClick={() => remove(comment)} title={t("discussion.delete")}>
                     <Trash2 size={11} />
                   </button>
                 )}
@@ -194,14 +196,14 @@ export function CommentsPanel({
           className="textarea discussion-input"
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder={"Comment on " + branch + "…"}
+          placeholder={t("discussion.placeholder", { branch })}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") post();
           }}
         />
         <div className="discussion-composer-foot">
-          <button className="discussion-author" onClick={() => openModal("profile")} title="Edit display name">
-            Posting as <strong>{authorName || "Guest"}</strong> · edit
+          <button className="discussion-author" onClick={() => openModal("profile")} title={t("profile.displayName")}>
+            {t("discussion.postingAs")} <strong>{authorName || "Guest"}</strong> · {t("discussion.edit")}
           </button>
           <Button
             size="sm"
@@ -211,7 +213,7 @@ export function CommentsPanel({
             disabled={!body.trim()}
             onClick={post}
           >
-            Post
+            {t("discussion.post")}
           </Button>
         </div>
       </div>

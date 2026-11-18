@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { Link, useRouter } from "../lib/router";
 import { relativeTime, truncateMiddle } from "../lib/format";
 import type { ProjectDetail } from "../lib/types";
@@ -23,10 +24,10 @@ import { ProjectNotes } from "./ProjectNotes";
 import { ProjectSettings } from "./ProjectSettings";
 
 const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "previews", label: "Previews" },
-  { id: "notes", label: "Notes" },
-  { id: "settings", label: "Settings" },
+  { id: "overview", labelKey: "project.tab.overview" },
+  { id: "previews", labelKey: "project.tab.previews" },
+  { id: "notes", labelKey: "project.tab.notes" },
+  { id: "settings", labelKey: "project.tab.settings" },
 ] as const;
 
 function ProjectSkeleton() {
@@ -55,6 +56,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   const { overview, openModal, refresh: refreshApp } = useApp();
   const { navigate } = useRouter();
   const { pushToast } = useToast();
+  const t = useT();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -66,7 +68,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
         setDetail(data);
         setError("");
       } catch (loadError) {
-        if (!silent) setError(loadError instanceof Error ? loadError.message : "Project not found");
+        if (!silent) setError(loadError instanceof Error ? loadError.message : t("project.notFound"));
       }
     },
     [projectId]
@@ -96,11 +98,11 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
       await load(true);
       await refreshApp();
       pushToast(
-        result.project.status === "ready" ? "Repository refreshed" : "Refresh completed with issues",
+        result.project.status === "ready" ? t("project.refreshedToast") : t("project.refreshIssuesToast"),
         result.project.status === "ready" ? "success" : "error"
       );
     } catch (refreshError) {
-      pushToast(refreshError instanceof Error ? refreshError.message : "Could not refresh", "error");
+      pushToast(refreshError instanceof Error ? refreshError.message : t("project.refreshError"), "error");
     } finally {
       setRefreshing(false);
     }
@@ -111,10 +113,10 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
       <div className="container page project-page">
         <div className="project-error-state">
           <span className="empty-icon"><AlertCircle size={20} /></span>
-          <h1>Project not found</h1>
+          <h1>{t("project.notFound")}</h1>
           <p className="muted">{error}</p>
           <Link to="/" className="btn btn-secondary btn-sm" style={{ marginTop: 18 }}>
-            <ArrowLeft size={13} /> Back to projects
+            <ArrowLeft size={13} /> {t("project.backToProjects")}
           </Link>
         </div>
       </div>
@@ -126,7 +128,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   const importing = project.status === "importing";
   const importFailed = project.status === "error";
   const sourceLabel = project.isDemo
-    ? "Bundled demo repository"
+    ? t("project.demoRepository")
     : project.source.url
       ? project.source.url.replace(/^https?:\/\//, "")
       : truncateMiddle(project.repoPath, 46);
@@ -139,12 +141,12 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
           <div className="project-head-text">
             <div className="project-title-line">
               <h1>{project.name}</h1>
-              {project.isDemo && <Badge tone="blue">Demo</Badge>}
-              {importing && <Badge tone="amber">Importing</Badge>}
-              {importFailed && <Badge tone="amber">Import failed</Badge>}
+              {project.isDemo && <Badge tone="blue">{t("project.demo")}</Badge>}
+              {importing && <Badge tone="amber">{t("project.importing")}</Badge>}
+              {importFailed && <Badge tone="amber">{t("project.importFailed")}</Badge>}
             </div>
             <p className="project-head-tagline">
-              {project.tagline || "No tagline yet — add one in Settings."}
+              {project.tagline || t("project.taglinePlaceholder")}
             </p>
           </div>
           <div className="project-actions">
@@ -155,7 +157,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
               onClick={refreshRepo}
               disabled={importing || importFailed || refreshing}
             >
-              Refresh
+              {t("project.refresh")}
             </Button>
             <Button
               size="sm"
@@ -163,7 +165,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
               icon={<Share2 size={13} />}
               onClick={() => openModal("share")}
             >
-              Share
+              {t("project.share")}
             </Button>
             <Button
               size="sm"
@@ -174,7 +176,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
               }
               disabled={importing || importFailed}
             >
-              Preview
+              {t("project.preview")}
             </Button>
           </div>
         </div>
@@ -191,14 +193,14 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
             )}
           </span>
           <span className="dot-sep">·</span>
-          <span className="meta-item"><GitBranch size={12} /> {project.branchCount || 0} branches</span>
+          <span className="meta-item"><GitBranch size={12} /> {t("project.branches", { count: project.branchCount || 0 })}</span>
           <span className="dot-sep">·</span>
-          <span className="meta-item">default <span className="mono">{project.defaultBranch}</span></span>
+          <span className="meta-item">{t("project.default")} <span className="mono">{project.defaultBranch}</span></span>
           {project.dirtyCount > 0 && (
             <>
               <span className="dot-sep">·</span>
               <span className="meta-item meta-warn">
-                {project.dirtyCount} uncommitted {project.dirtyCount === 1 ? "change" : "changes"} not previewed
+                {t("project.uncommitted", { count: project.dirtyCount })}
               </span>
             </>
           )}
@@ -213,14 +215,14 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
           )}
         </div>
 
-        <nav className="tabs project-tabs" aria-label="Project sections">
+        <nav className="tabs project-tabs" aria-label={t("project.sectionsAria")}>
           {TABS.map((item) => (
             <Link
               key={item.id}
               to={"/p/" + project.id + "/" + item.id}
               className={"tab" + (activeTab === item.id ? " tab-active" : "")}
             >
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           ))}
         </nav>
@@ -230,11 +232,8 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
         <div className="project-state card">
           <div className="import-state">
             <span className="import-spinner"><Loader2 size={20} className="spin" /></span>
-            <h2>Cloning repository</h2>
-            <p>
-              Vercio is importing <span className="mono">{project.source.url}</span>. Large repositories
-              can take a minute — you can leave this page and come back.
-            </p>
+            <h2>{t("project.importing.title")}</h2>
+            <p>{t("project.importing.desc", { url: project.source.url || "" })}</p>
             <div className="import-bar"><Skeleton width="100%" height={4} /></div>
           </div>
         </div>
@@ -244,8 +243,8 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
         <div className="project-state card">
           <div className="import-state">
             <span className="import-spinner is-error"><AlertCircle size={20} /></span>
-            <h2>Import failed</h2>
-            <p>{project.error || "Vercio could not clone this repository."}</p>
+            <h2>{t("project.importFailed.title")}</h2>
+            <p>{project.error || t("project.importFailed.desc")}</p>
             <div className="import-actions">
               <Button
                 variant="primary"
@@ -254,23 +253,20 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
                 onClick={async () => {
                   try {
                     await api.retryImport(project.id);
-                    pushToast("Retrying import", "info");
+                    pushToast(t("project.retryToast"), "info");
                     await load(true);
                   } catch (retryError) {
-                    pushToast(retryError instanceof Error ? retryError.message : "Retry failed", "error");
+                    pushToast(retryError instanceof Error ? retryError.message : t("project.retryError"), "error");
                   }
                 }}
               >
-                Retry import
+                {t("project.retryImport")}
               </Button>
               <Button variant="secondary" size="sm" onClick={() => navigate("/")}>
-                Back to projects
+                {t("project.backToProjects")}
               </Button>
             </div>
-            <p className="hint">
-              Private repository? Make sure your local git credentials (SSH key or credential helper)
-              have access.
-            </p>
+            <p className="hint">{t("project.importHint")}</p>
           </div>
         </div>
       )}

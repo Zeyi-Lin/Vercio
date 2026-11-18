@@ -1,5 +1,6 @@
 import { ArrowUpRight, GitBranch } from "lucide-react";
 import { Link } from "../lib/router";
+import { useT } from "../i18n";
 import { relativeTime } from "../lib/format";
 import type { Deployment } from "../lib/types";
 import { EmptyState, StatusPill } from "./ui";
@@ -7,7 +8,7 @@ import { EmptyState, StatusPill } from "./ui";
 export function DeploymentList({
   deployments,
   showProject = true,
-  emptyTitle = "No deployments yet",
+  emptyTitle,
   emptyDescription,
 }: {
   deployments: Deployment[];
@@ -15,8 +16,9 @@ export function DeploymentList({
   emptyTitle?: string;
   emptyDescription?: React.ReactNode;
 }) {
+  const t = useT();
   if (!deployments.length) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return <EmptyState title={emptyTitle || t("deployments.emptyTitle")} description={emptyDescription} />;
   }
   if (!showProject) {
     return (
@@ -54,11 +56,11 @@ export function DeploymentList({
   return (
     <div className="deployment-list">
       <div className={"deployment-row deployment-row-head" + (showProject ? "" : " no-project")}>
-        <span>Status</span>
-        {showProject && <span>Project</span>}
-        <span>Branch</span>
-        <span>Commit</span>
-        <span className="deployment-time-col">Created</span>
+        <span>{t("deployments.status")}</span>
+        {showProject && <span>{t("deployments.project")}</span>}
+        <span>{t("deployments.branch")}</span>
+        <span>{t("deployments.commit")}</span>
+        <span className="deployment-time-col">{t("deployments.created")}</span>
         <span />
       </div>
       {deployments.map((deployment) => {

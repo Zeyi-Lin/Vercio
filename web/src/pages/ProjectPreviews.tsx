@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { useInterval } from "../lib/hooks";
 import { relativeTime } from "../lib/format";
+import { frameworkLabel } from "../lib/framework";
 import type {
   BranchChanges,
   BranchList,
@@ -28,15 +30,16 @@ import { Badge, Button, EmptyState, Skeleton, StatusPill } from "../components/u
 
 type Device = "desktop" | "tablet" | "mobile";
 
-const DEVICES: { id: Device; label: string; icon: typeof Monitor }[] = [
-  { id: "desktop", label: "Desktop", icon: Monitor },
-  { id: "tablet", label: "Tablet", icon: Tablet },
-  { id: "mobile", label: "Mobile", icon: Smartphone },
+const DEVICES: { id: Device; labelKey: "preview.device.desktop" | "preview.device.tablet" | "preview.device.mobile"; icon: typeof Monitor }[] = [
+  { id: "desktop", labelKey: "preview.device.desktop", icon: Monitor },
+  { id: "tablet", labelKey: "preview.device.tablet", icon: Tablet },
+  { id: "mobile", labelKey: "preview.device.mobile", icon: Smartphone },
 ];
 
 export function ProjectPreviews({ project }: { project: Project }) {
   const { openModal } = useApp();
   const { pushToast } = useToast();
+  const t = useT();
   const [data, setData] = useState<BranchList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,7 +69,7 @@ export function ProjectPreviews({ project }: { project: Project }) {
         return result;
       } catch (loadError) {
         if (!silent) {
-          setError(loadError instanceof Error ? loadError.message : "Could not load branches");
+          setError(loadError instanceof Error ? loadError.message : t("preview.couldNotLoad"));
           setLoading(false);
         }
         return null;
@@ -149,7 +152,7 @@ export function ProjectPreviews({ project }: { project: Project }) {
         return result.deployment;
       } catch (deployError) {
         pushToast(
-          deployError instanceof Error ? deployError.message : "Could not start preview",
+          deployError instanceof Error ? deployError.message : t("preview.startError"),
           "error"
         );
         return null;
@@ -310,9 +313,9 @@ export function ProjectPreviews({ project }: { project: Project }) {
     try {
       const result = await api.stopDeployment(deployment.id);
       setDeployments((current) => ({ ...current, [branch]: result.deployment }));
-      pushToast("Preview stopped", "info");
+      pushToast(t("preview.stoppedToast"), "info");
     } catch (stopError) {
-      pushToast(stopError instanceof Error ? stopError.message : "Could not stop preview", "error");
+      pushToast(stopError instanceof Error ? stopError.message : t("preview.stopError"), "error");
     }
   };
 
@@ -320,10 +323,10 @@ export function ProjectPreviews({ project }: { project: Project }) {
     return (
       <div className="previews-error card">
         <span className="empty-icon"><AlertCircle size={18} /></span>
-        <h3>Could not load branches</h3>
+        <h3>{t("preview.couldNotLoad")}</h3>
         <p className="muted">{error}</p>
         <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
-          Try again
+          {t("preview.tryAgain")}
         </Button>
       </div>
     );
@@ -359,11 +362,11 @@ export function ProjectPreviews({ project }: { project: Project }) {
       <div className="card">
         <EmptyState
           icon={<GitBranch size={18} />}
-          title="No branches found"
-          description="Make a commit on this repository, then refresh the branch list."
+          title={t("preview.noBranches")}
+          description={t("preview.noBranchesDesc")}
           actions={
             <Button size="sm" variant="secondary" onClick={() => loadBranches(false)}>
-              Refresh branches
+              {t("preview.refreshBranchesBtn")}
             </Button>
           }
         />
@@ -392,23 +395,23 @@ export function ProjectPreviews({ project }: { project: Project }) {
           <div className="preview-toolbar-left">
             <span className="toolbar-branch">
               <GitBranch size={12} />
-              <span className="mono truncate">{selected || "Select a branch"}</span>
+              <span className="mono truncate">{selected || t("preview.selectBranch")}</span>
             </span>
             {primaryDeployment && <StatusPill status={primaryDeployment.status} />}
             {primaryDeployment?.mode && (
-              <span className="toolbar-mode">{primaryDeployment.mode === "server" ? "dev server" : "static"}</span>
+              <span className="toolbar-mode">{primaryDeployment.mode === "server" ? t("preview.devServer") : t("preview.static")}</span>
             )}
-            {selectedIsDefault && <span className="toolbar-mode">production</span>}
+            {selectedIsDefault && <span className="toolbar-mode">{t("preview.production")}</span>}
           </div>
           <div className="preview-toolbar-right">
-            <div className="segmented device-toggle" role="group" aria-label="Preview viewport">
-              {DEVICES.map(({ id, label, icon: Icon }) => (
+            <div className="segmented device-toggle" role="group" aria-label={t("preview.viewportAria")}>
+              {DEVICES.map(({ id, labelKey, icon: Icon }) => (
                 <button
                   key={id}
                   className={"segmented-option" + (device === id ? " active" : "")}
                   onClick={() => setDevice(id)}
-                  title={label + " preview"}
-                  aria-label={label + " preview"}
+                  title={t("preview.deviceAria", { device: t(labelKey) })}
+                  aria-label={t("preview.deviceAria", { device: t(labelKey) })}
                   disabled={compare}
                 >
                   <Icon size={13} />
@@ -423,7 +426,7 @@ export function ProjectPreviews({ project }: { project: Project }) {
               onClick={toggleCompare}
               disabled={!data || data.branches.length < 2}
             >
-              Compare
+              {t("preview.compare")}
             </Button>
             <Button
               size="sm"
@@ -437,7 +440,7 @@ export function ProjectPreviews({ project }: { project: Project }) {
                 })
               }
             >
-              Discussion
+              {t("preview.discussion")}
               {commentCount > 0 && <span className="btn-count">{commentCount}</span>}
             </Button>
           </div>
@@ -459,8 +462,8 @@ export function ProjectPreviews({ project }: { project: Project }) {
             <div className="preview-placeholder">
               <EmptyState
                 icon={<GitBranch size={18} />}
-                title="Pick a branch to preview"
-                description="Every branch gets an isolated worktree and its own live preview."
+                title={t("preview.pickBranch")}
+                description={t("preview.pickBranchDesc")}
               />
             </div>
           )}
@@ -480,8 +483,8 @@ export function ProjectPreviews({ project }: { project: Project }) {
                   className="branch-picker mono"
                   value={compareBranch}
                   onChange={(event) => chooseCompareBranch(event.target.value)}
-                  title="Compare against another branch"
-                  aria-label="Compare against another branch"
+                  title={t("preview.compareAgainst")}
+                  aria-label={t("preview.compareAgainst")}
                 >
                   {data?.branches
                     .filter((branch) => branch.name !== selected)
@@ -508,18 +511,18 @@ export function ProjectPreviews({ project }: { project: Project }) {
                 <span className="meta-muted">{relativeTime(primaryDeployment.createdAt)}</span>
               </>
             ) : (
-              <span className="muted">No preview running for this branch.</span>
+              <span className="muted">{t("preview.noPreview")}</span>
             )}
           </div>
           <div className="preview-meta-right">
             {changes && (
-              <span className="changes-summary" title={"Compared with " + changes.base}>
+              <span className="changes-summary" title={t("preview.changesTitle", { branch: changes.base })}>
                 <span className="changes-plus">+{changes.additions}</span>
                 <span className="changes-minus">−{changes.deletions}</span>
-                <span className="meta-muted">{changes.fileCount} files</span>
+                <span className="meta-muted">{t("preview.files", { count: changes.fileCount })}</span>
               </span>
             )}
-            {primaryDeployment?.framework && <Badge>{primaryDeployment.framework.label}</Badge>}
+            {primaryDeployment?.framework && <Badge>{frameworkLabel(primaryDeployment.framework, t)}</Badge>}
             {primaryDeployment && primaryDeployment.status === "ready" && (
               <Button
                 size="sm"
@@ -527,16 +530,16 @@ export function ProjectPreviews({ project }: { project: Project }) {
                 icon={<Square size={10} />}
                 onClick={() => stopBranch(selected)}
               >
-                Stop preview
+                {t("preview.stop")}
               </Button>
             )}
             {primaryDeployment && (
-              <span className="deployment-id mono" title="Deployment ID">
+              <span className="deployment-id mono" title={t("preview.deploymentId")}>
                 {primaryDeployment.id}
               </span>
             )}
             <button className="link-button" onClick={() => openModal("share")}>
-              Share preview
+              {t("preview.share")}
             </button>
           </div>
         </div>

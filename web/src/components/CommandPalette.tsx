@@ -12,6 +12,7 @@ import {
 import { api } from "../lib/api";
 import { copyText } from "../lib/format";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { useRouter } from "../lib/router";
 import { useToast } from "./Toast";
 
@@ -28,6 +29,7 @@ export function CommandPalette() {
   const { activeModal, closeModal, openModal, overview, systemInfo, refresh } = useApp();
   const { navigate } = useRouter();
   const { pushToast } = useToast();
+  const t = useT();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -46,8 +48,8 @@ export function CommandPalette() {
     const actions: Item[] = [
       {
         id: "add",
-        group: "Actions",
-        label: "Add project",
+        group: t("palette.actions"),
+        label: t("palette.addProject"),
         icon: <FolderPlus size={15} />,
         run: () => {
           closeModal();
@@ -56,8 +58,8 @@ export function CommandPalette() {
       },
       {
         id: "demo",
-        group: "Actions",
-        label: "Load demo project",
+        group: t("palette.actions"),
+        label: t("palette.loadDemo"),
         icon: <Sparkles size={15} />,
         run: async () => {
           try {
@@ -66,14 +68,14 @@ export function CommandPalette() {
             closeModal();
             navigate("/p/" + project.id + "/previews");
           } catch (error) {
-            pushToast(error instanceof Error ? error.message : "Could not load demo", "error");
+            pushToast(error instanceof Error ? error.message : t("dashboard.demoError"), "error");
           }
         },
       },
       {
         id: "share",
-        group: "Actions",
-        label: "Share on Wi-Fi",
+        group: t("palette.actions"),
+        label: t("palette.share"),
         icon: <Wifi size={15} />,
         run: () => {
           closeModal();
@@ -82,31 +84,31 @@ export function CommandPalette() {
       },
       {
         id: "copy",
-        group: "Actions",
-        label: "Copy network URL",
+        group: t("palette.actions"),
+        label: t("palette.copyUrl"),
         hint: systemInfo?.primaryUrl,
         icon: <ArrowRight size={15} />,
         run: async () => {
           await copyText(systemInfo?.primaryUrl || window.location.origin);
           closeModal();
-          pushToast("Network URL copied", "success");
+          pushToast(t("palette.copied"), "success");
         },
       },
       {
         id: "refresh",
-        group: "Actions",
-        label: "Refresh workspace",
+        group: t("palette.actions"),
+        label: t("palette.refresh"),
         icon: <RefreshCw size={15} />,
         run: async () => {
           await refresh();
           closeModal();
-          pushToast("Workspace refreshed", "success");
+          pushToast(t("palette.refreshed"), "success");
         },
       },
     ];
     const projects: Item[] = (overview?.projects || []).map((project) => ({
       id: "project-" + project.id,
-      group: "Projects",
+      group: t("palette.projects"),
       label: project.name,
       hint: project.source.url || project.repoPath,
       icon: <LayoutGrid size={15} />,
@@ -123,7 +125,7 @@ export function CommandPalette() {
         item.label.toLowerCase().includes(needle) ||
         (item.hint || "").toLowerCase().includes(needle)
     );
-  }, [overview, query, closeModal, openModal, navigate, pushToast, refresh, systemInfo]);
+  }, [overview, query, closeModal, openModal, navigate, pushToast, refresh, systemInfo, t]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -151,14 +153,14 @@ export function CommandPalette() {
         if (event.target === event.currentTarget) closeModal();
       }}
     >
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div className="palette" role="dialog" aria-modal="true" aria-label={t("nav.commandPalette")}>
         <div className="palette-search">
           <Search size={15} />
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search projects and actions…"
+            placeholder={t("palette.placeholder")}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -178,7 +180,7 @@ export function CommandPalette() {
           <span className="kbd">esc</span>
         </div>
         <div className="palette-list" ref={listRef}>
-          {groups.length === 0 && <div className="palette-empty">No results</div>}
+          {groups.length === 0 && <div className="palette-empty">{t("palette.noResults")}</div>}
           {groups.map((group) => (
             <div className="palette-group" key={group.name}>
               <div className="palette-group-label">{group.name}</div>
@@ -202,9 +204,9 @@ export function CommandPalette() {
           ))}
         </div>
         <div className="palette-footer">
-          <span><span className="kbd">↑</span> <span className="kbd">↓</span> navigate</span>
-          <span><span className="kbd">↵</span> select</span>
-          <span><span className="kbd">esc</span> close</span>
+          <span><span className="kbd">↑</span> <span className="kbd">↓</span> {t("palette.navigate")}</span>
+          <span><span className="kbd">↵</span> {t("palette.select")}</span>
+          <span><span className="kbd">esc</span> {t("palette.close")}</span>
         </div>
       </div>
     </div>,

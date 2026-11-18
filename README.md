@@ -1,5 +1,7 @@
 # Vercio
 
+**中文** | [English](README.en.md)
+
 > 本地版 Vercel 前端协作 —— 指定一个 Git 仓库，在浏览器里点击不同分支，实时查看前端变化；同一 Wi-Fi 下即可分享。
 
 ![Vercio 工作台](docs/images/dashboard.jpg)
@@ -39,6 +41,7 @@
 - **依赖缓存**：按 `package.json + lockfile` 指纹缓存 `node_modules`；如果本地工作副本已经装好了依赖，会直接复用软链，避免重复安装。
 - **过程可视**：准备 worktree、安装依赖、启动 dev server 的每一步都有实时日志与状态；失败时可以看完整日志，一键重试。
 - **本地优先**：代码、分支、产品描述、笔记、评论全部存在本机 `.vercio/` 目录里，不上传任何东西。
+- **中英双语界面**：默认跟随浏览器语言，也可用右上角 **EN / 中文** 随时切换并记住偏好；仓库内容、笔记等数据保持原文，不参与界面翻译。
 
 ## 截图
 
@@ -53,6 +56,10 @@
 | 项目概览（Product brief + README） | 局域网分享（二维码） |
 | --- | --- |
 | ![项目概览](docs/images/overview.jpg) | ![局域网分享](docs/images/share.jpg) |
+
+| 中文界面 | English UI |
+| --- | --- |
+| ![中文界面](docs/images/dashboard-zh.jpg) | ![English UI](docs/images/dashboard.jpg) |
 
 | 首次打开 / 引导 |
 | --- |
@@ -79,7 +86,7 @@ npm start
 ```
 
 
-打开 http://localhost:4000 ，然后：
+打开 http://localhost:4000 ，然后（界面可随时用右上角 **EN / 中文** 切换，默认为浏览器语言）：
 
 1. 点击 **Load demo project** 载入内置的 Lumen 演示仓库（4 个分支，可直接体验分支切换/对比/笔记/讨论）；或
 2. 点击 **Add project**，输入 GitHub 仓库（`owner/repo` 或完整 URL）或本机仓库绝对路径。
@@ -217,6 +224,13 @@ npm test
 覆盖：Git 分支解析与 diff、项目/笔记/评论 API、静态预览与重定向、自定义 dev server 预览的生命周期与停止、并发 worktree 隔离、演示项目生成与两条分支的实际内容差异。
 
 本次交付验证还包括：真实 Vite 项目（`npm install` → dev server → 依赖缓存复用 → 局域网访问）、GitHub 仓库 clone 导入、React 界面端到端操作（载入演示、切换/对比分支、发评论、新建笔记自动保存、编辑 Product brief、添加/删除项目、手机宽度布局）以及无浏览器控制台错误。
+
+## 多语言
+
+- 界面支持 **中文 / English**，首次访问按浏览器语言自动选择。
+- 右上角的 **EN / 中文** 切换按钮即时生效，并把偏好保存在当前浏览器；本地资料弹窗里也能切换。
+- 项目内容（仓库分支、README、产品描述、笔记、评论）按原文展示，不随界面语言改变。
+- 新增语言只需在 [web/src/i18n/dictionary.ts](web/src/i18n/dictionary.ts) 中添加一份字典；TypeScript 会校验字典键完整性。
 
 ## 安全与限制
 

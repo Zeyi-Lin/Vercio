@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { useT } from "../i18n";
 import { plainText } from "../lib/markdown";
 import { relativeTime } from "../lib/format";
 import type { Note, Project } from "../lib/types";
@@ -49,6 +50,7 @@ function parseTags(value: string): string[] {
 
 export function ProjectNotes({ project }: { project: Project }) {
   const { pushToast } = useToast();
+  const t = useT();
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -83,7 +85,7 @@ export function ProjectNotes({ project }: { project: Project }) {
       .catch((error) => {
         if (!cancelled) {
           setNotes([]);
-          pushToast(error instanceof Error ? error.message : "Could not load notes", "error");
+          pushToast(error instanceof Error ? error.message : t("notes.loadError"), "error");
         }
       });
     return () => {
@@ -172,7 +174,7 @@ export function ProjectNotes({ project }: { project: Project }) {
     setCreating(true);
     try {
       const result = await api.createNote(project.id, {
-        title: "Untitled note",
+        title: t("notes.untitled"),
         body: "",
         tags: [],
         pinned: false,
@@ -188,7 +190,7 @@ export function ProjectNotes({ project }: { project: Project }) {
         titleRef.current?.select();
       }, 60);
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not create note", "error");
+      pushToast(error instanceof Error ? error.message : t("notes.createError"), "error");
     } finally {
       setCreating(false);
     }
@@ -209,9 +211,9 @@ export function ProjectNotes({ project }: { project: Project }) {
         setDraft(EMPTY_DRAFT);
       }
       setDeleteOpen(false);
-      pushToast("Note deleted", "success");
+      pushToast(t("notes.deleted"), "success");
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not delete note", "error");
+      pushToast(error instanceof Error ? error.message : t("notes.deleteError"), "error");
     } finally {
       setDeleting(false);
     }
@@ -244,14 +246,14 @@ export function ProjectNotes({ project }: { project: Project }) {
       <aside className="notes-sidebar">
         <div className="notes-sidebar-head">
           <div className="notes-sidebar-title">
-            <h2>Notes</h2>
+            <h2>{t("notes.title")}</h2>
             <span className="branch-count">{notes?.length || 0}</span>
           </div>
           <button
             className="icon-btn bordered"
             onClick={createNote}
-            title="New note"
-            aria-label="New note"
+            title={t("notes.new")}
+            aria-label={t("notes.new")}
             disabled={creating}
           >
             <Plus size={14} />
@@ -262,8 +264,8 @@ export function ProjectNotes({ project }: { project: Project }) {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search notes…"
-            aria-label="Search notes"
+            placeholder={t("notes.search")}
+            aria-label={t("notes.search")}
           />
         </div>
         <div className="note-list">
@@ -276,7 +278,7 @@ export function ProjectNotes({ project }: { project: Project }) {
             ))}
           {notes !== null && filtered.length === 0 && (
             <p className="branch-empty">
-              {notes.length === 0 ? "No notes yet." : "No notes match “" + search + "”."}
+              {notes.length === 0 ? t("notes.noNotes") : t("notes.noMatch", { query: search })}
             </p>
           )}
           {filtered.map((note) => (
@@ -295,13 +297,13 @@ export function ProjectNotes({ project }: { project: Project }) {
                 <span className="truncate">{note.title}</span>
               </div>
               <p className="note-item-snippet">
-                {plainText(note.body).slice(0, 96) || "Empty note"}
+                {plainText(note.body).slice(0, 96) || t("notes.emptyNote")}
               </p>
               <div className="note-item-meta">
                 {note.branch ? (
                   <span className="note-item-branch mono truncate"><GitBranch size={9} /> {note.branch}</span>
                 ) : (
-                  <span className="note-item-branch">Project note</span>
+                  <span className="note-item-branch">{t("notes.projectNote")}</span>
                 )}
                 <span>{relativeTime(note.updatedAt)}</span>
               </div>
@@ -310,7 +312,7 @@ export function ProjectNotes({ project }: { project: Project }) {
         </div>
         <div className="notes-sidebar-foot">
           <StickyNote size={12} />
-          Notes are saved locally, instantly.
+          {t("notes.savedLocally")}
         </div>
       </aside>
 
@@ -332,11 +334,11 @@ export function ProjectNotes({ project }: { project: Project }) {
         ) : !selectedNote || !notes.length ? (
           <EmptyState
             icon={<FileText size={20} />}
-            title="Write down the why"
-            description="Keep the product brief, design reviews, launch checklists and open questions next to the code. Markdown supported."
+            title={t("notes.emptyTitle")}
+            description={t("notes.emptyDesc")}
             actions={
               <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={createNote}>
-                New note
+                {t("notes.newNote")}
               </Button>
             }
           />
@@ -348,7 +350,7 @@ export function ProjectNotes({ project }: { project: Project }) {
                 className="note-title-input"
                 value={draft.title}
                 onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Note title"
+                placeholder={t("notes.titlePlaceholder")}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === "s") {
                     event.preventDefault();
@@ -360,16 +362,16 @@ export function ProjectNotes({ project }: { project: Project }) {
                 <button
                   className={"icon-btn" + (draft.pinned ? " is-active" : "")}
                   onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))}
-                  title={draft.pinned ? "Unpin note" : "Pin note"}
-                  aria-label={draft.pinned ? "Unpin note" : "Pin note"}
+                  title={draft.pinned ? t("notes.unpin") : t("notes.pin")}
+                  aria-label={draft.pinned ? t("notes.unpin") : t("notes.pin")}
                 >
                   {draft.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                 </button>
                 <button
                   className="icon-btn"
                   onClick={() => setDeleteOpen(true)}
-                  title="Delete note"
-                  aria-label="Delete note"
+                  title={t("notes.delete")}
+                  aria-label={t("notes.delete")}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -379,18 +381,20 @@ export function ProjectNotes({ project }: { project: Project }) {
             <div className="note-editor-meta">
               <div className="note-meta-left">
                 <span className={"save-state save-" + saveState}>
-                  {saveState === "saving"
-                    ? "Saving…"
-                    : saveState === "saved"
-                      ? "Saved"
-                      : saveState === "error"
-                        ? "Save failed"
-                        : "Autosaves locally"}
+                  {t(
+                    saveState === "saving"
+                      ? "notes.saveState.saving"
+                      : saveState === "saved"
+                        ? "notes.saveState.saved"
+                        : saveState === "error"
+                          ? "notes.saveState.error"
+                          : "notes.saveState.idle"
+                  )}
                 </span>
                 <span className="dot-sep">·</span>
-                <span>{wordCount} words</span>
+                <span>{t("notes.words", { count: wordCount })}</span>
                 <span className="dot-sep">·</span>
-                <span>Edited {relativeTime(selectedNote.updatedAt)}</span>
+                <span>{t("notes.edited", { time: relativeTime(selectedNote.updatedAt) })}</span>
               </div>
               <div className="note-meta-right">
                 <label className="note-branch-select">
@@ -400,9 +404,9 @@ export function ProjectNotes({ project }: { project: Project }) {
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, branch: event.target.value }))
                     }
-                    aria-label="Link note to a branch"
+                    aria-label={t("notes.linkBranch")}
                   >
-                    <option value="">Project note</option>
+                    <option value="">{t("notes.projectNote")}</option>
                     {branches.map((branch) => (
                       <option key={branch} value={branch}>
                         {branch}
@@ -415,26 +419,26 @@ export function ProjectNotes({ project }: { project: Project }) {
                     className={"segmented-option" + (mode === "write" ? " active" : "")}
                     onClick={() => setMode("write")}
                   >
-                    <Pencil size={11} /> Write
+                    <Pencil size={11} /> {t("notes.write")}
                   </button>
                   <button
                     className={"segmented-option" + (mode === "preview" ? " active" : "")}
                     onClick={() => setMode("preview")}
                   >
-                    <Eye size={11} /> Preview
+                    <Eye size={11} /> {t("notes.preview")}
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="note-tags-row">
-              <span className="note-tags-label">Tags</span>
+              <span className="note-tags-label">{t("notes.tags")}</span>
               {mode === "write" ? (
                 <input
                   className="note-tags-input"
                   value={draft.tags}
                   onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))}
-                  placeholder="design, launch, review"
+                  placeholder={t("notes.tagsPlaceholder")}
                 />
               ) : parseTags(draft.tags).length ? (
                 <div className="note-tag-chips">
@@ -443,7 +447,7 @@ export function ProjectNotes({ project }: { project: Project }) {
                   ))}
                 </div>
               ) : (
-                <span className="hint">No tags yet — switch to Write to add some.</span>
+                <span className="hint">{t("notes.noTags")}</span>
               )}
             </div>
 
@@ -453,7 +457,7 @@ export function ProjectNotes({ project }: { project: Project }) {
                   className="note-textarea"
                   value={draft.body}
                   onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
-                  placeholder="Start writing… Markdown works here."
+                  placeholder={t("notes.bodyPlaceholder")}
                   onKeyDown={(event) => {
                     if ((event.metaKey || event.ctrlKey) && event.key === "s") {
                       event.preventDefault();
@@ -467,7 +471,7 @@ export function ProjectNotes({ project }: { project: Project }) {
                   {draft.body.trim() ? (
                     <Markdown source={draft.body} />
                   ) : (
-                    <p className="muted">Nothing to preview yet.</p>
+                    <p className="muted">{t("notes.noPreview")}</p>
                   )}
                 </div>
               )}
@@ -478,9 +482,9 @@ export function ProjectNotes({ project }: { project: Project }) {
 
       <ConfirmDialog
         open={deleteOpen}
-        title="Delete this note?"
-        description="This action cannot be undone. The note will be removed from this machine."
-        confirmLabel="Delete note"
+        title={t("notes.deleteTitle")}
+        description={t("notes.deleteDesc")}
+        confirmLabel={t("notes.deleteConfirm")}
         busy={deleting}
         onCancel={() => setDeleteOpen(false)}
         onConfirm={deleteNote}

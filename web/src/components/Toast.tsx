@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
+import { useT } from "../i18n";
 
 type Tone = "success" | "error" | "info";
 
@@ -23,6 +24,7 @@ export function useToast() {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const idRef = useRef(0);
+  const t = useT();
 
   const remove = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -43,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toasts" role="region" aria-label="Notifications">
+      <div className="toasts" role="region" aria-label={t("common.notifications")}>
         {toasts.map((toast) => (
           <div key={toast.id} className={"toast toast-" + toast.tone}>
             <span className="toast-icon">
@@ -56,7 +58,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               )}
             </span>
             <span className="toast-msg">{toast.message}</span>
-            <button className="toast-close" onClick={() => remove(toast.id)} aria-label="Dismiss">
+            <button className="toast-close" onClick={() => remove(toast.id)} aria-label={t("common.dismiss")}>
               <X size={13} />
             </button>
           </div>

@@ -1,3 +1,10 @@
+type FormatLocale = "en" | "zh";
+let formatLocale: FormatLocale = "en";
+
+export function setFormatLocale(locale: FormatLocale) {
+  formatLocale = locale;
+}
+
 export function relativeTime(input?: string | number | null): string {
   if (!input) return "—";
   const date = typeof input === "number" ? new Date(input) : new Date(input);
@@ -5,6 +12,18 @@ export function relativeTime(input?: string | number | null): string {
   if (Number.isNaN(time)) return "—";
   const delta = Date.now() - time;
   const seconds = Math.round(delta / 1000);
+  if (formatLocale === "zh") {
+    if (seconds < 45) return "刚刚";
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return minutes + " 分钟前";
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + " 小时前";
+    const days = Math.round(hours / 24);
+    if (days < 30) return days + " 天前";
+    const months = Math.round(days / 30);
+    if (months < 12) return months + " 个月前";
+    return Math.round(months / 12) + " 年前";
+  }
   if (seconds < 45) return "just now";
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return minutes + "m ago";
@@ -21,7 +40,7 @@ export function formatDate(input?: string | number | null): string {
   if (!input) return "—";
   const date = typeof input === "number" ? new Date(input) : new Date(input);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(undefined, {
+  return date.toLocaleString(formatLocale === "zh" ? "zh-CN" : undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",

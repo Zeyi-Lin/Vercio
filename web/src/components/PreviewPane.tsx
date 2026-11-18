@@ -10,6 +10,8 @@ import {
   RotateCw,
   Square,
 } from "lucide-react";
+import { useT } from "../i18n";
+import type { TranslationKey } from "../i18n/dictionary";
 import { relativeTime } from "../lib/format";
 import type { Deployment } from "../lib/types";
 import { CopyButton, Spinner, StatusPill } from "./ui";
@@ -21,32 +23,33 @@ export function isPendingStatus(status?: string): boolean {
   return Boolean(status && PENDING_STATUSES.includes(status));
 }
 
-function statusHeadline(deployment: Deployment): string {
-  switch (deployment.status) {
+function statusHeadlineKey(status: Deployment["status"]): TranslationKey {
+  switch (status) {
     case "queued":
-      return "Queued";
+      return "preview.status.queued";
     case "preparing":
-      return "Checking out branch";
+      return "preview.status.preparing";
     case "installing":
-      return "Installing dependencies";
+      return "preview.status.installing";
     case "starting":
-      return "Starting dev server";
+      return "preview.status.starting";
     case "ready":
-      return "Preview ready";
+      return "preview.status.ready";
     case "error":
-      return "Preview failed";
+      return "preview.status.error";
     case "stopped":
-      return "Preview stopped";
+      return "preview.status.stopped";
     default:
-      return "Preparing preview";
+      return "preview.status.preparingGeneral";
   }
 }
 
 function BuildSteps({ status }: { status: string }) {
+  const t = useT();
   const steps = [
-    { key: "preparing", label: "Checkout branch" },
-    { key: "installing", label: "Install dependencies" },
-    { key: "starting", label: "Start dev server" },
+    { key: "preparing", label: t("preview.step.checkout") },
+    { key: "installing", label: t("preview.step.install") },
+    { key: "starting", label: t("preview.step.start") },
   ];
   const order = ["preparing", "installing", "starting", "ready"];
   const activeIndex = order.indexOf(status);
@@ -87,6 +90,7 @@ export function PreviewState({
   onRetry: () => void;
   onStop?: () => void;
 }) {
+  const t = useT();
   const status = deployment?.status;
   const pending = !deployment || isPendingStatus(status);
   const failed = status === "error";
@@ -100,7 +104,7 @@ export function PreviewState({
             {failed ? <AlertCircle size={18} /> : stopped ? <Square size={15} /> : <Loader2 size={17} className="spin" />}
           </span>
           <div className="build-heading">
-            <h3>{deployment ? statusHeadline(deployment) : "Preparing preview"}</h3>
+            <h3>{deployment ? t(statusHeadlineKey(deployment.status)) : t("preview.status.preparingGeneral")}</h3>
             <p>
               <GitBranch size={11} /> <span className="mono">{branch}</span>
               {deployment && (
@@ -120,10 +124,10 @@ export function PreviewState({
 
         {failed && (
           <div className="build-error">
-            <p>{deployment?.error || "The preview could not be prepared."}</p>
+            <p>{deployment?.error || t("preview.failedMessage")}</p>
             <div className="build-error-actions">
               <button className="btn btn-sm btn-primary" onClick={onRetry}>
-                <RotateCw size={12} /> Retry preview
+                <RotateCw size={12} /> {t("preview.retry")}
               </button>
             </div>
           </div>
@@ -131,14 +135,14 @@ export function PreviewState({
 
         {stopped && (
           <div className="build-error">
-            <p>{deployment?.error || "This preview is not running anymore."}</p>
+            <p>{deployment?.error || t("preview.stoppedMessage")}</p>
             <div className="build-error-actions">
               <button className="btn btn-sm btn-secondary" onClick={onRetry}>
-                <Play size={12} /> Start preview
+                <Play size={12} /> {t("preview.start")}
               </button>
               {onStop && (
                 <button className="btn btn-sm btn-ghost" onClick={onStop}>
-                  Remove
+                  {t("preview.remove")}
                 </button>
               )}
             </div>
@@ -147,16 +151,11 @@ export function PreviewState({
 
         <TerminalLog
           log={logs}
-          title={failed ? "Preview logs" : pending ? "Preparing preview" : "Preview logs"}
-          emptyText={pending ? "Spinning up an isolated worktree…" : "No logs."}
+          title={pending ? t("preview.logs.preparing") : t("preview.logs.title")}
+          emptyText={pending ? t("preview.logs.spinning") : t("preview.logs.none")}
         />
 
-        {pending && (
-          <p className="build-hint">
-            Previews run from an isolated git worktree. Dependencies are cached after the first
-            install, so switching branches gets faster.
-          </p>
-        )}
+        {pending && <p className="build-hint">{t("preview.prepareHint")}</p>}
       </div>
     </div>
   );
@@ -185,6 +184,7 @@ export function BrowserFrame({
   branchPicker?: ReactNode;
   compact?: boolean;
 }) {
+  const t = useT();
   const ready = deployment?.status === "ready";
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [loadingSlow, setLoadingSlow] = useState(false);
@@ -226,16 +226,16 @@ export function BrowserFrame({
               href={previewHref}
               target="_blank"
               rel="noreferrer"
-              title="Open preview in a new tab"
-              aria-label="Open preview in a new tab"
+              title={t("preview.openNewTab")}
+              aria-label={t("preview.openNewTab")}
             >
               <ExternalLink size={13} />
             </a>
             <button
               className="icon-btn"
               onClick={onReload}
-              title="Reload preview"
-              aria-label="Reload preview"
+              title={t("preview.reload")}
+              aria-label={t("preview.reload")}
               disabled={!ready}
             >
               <RotateCw size={13} />
@@ -248,15 +248,15 @@ export function BrowserFrame({
               {!frameLoaded && (
                 <div className="frame-loading">
                   <Spinner large />
-                  <span>Loading preview…</span>
-                  {loadingSlow && <span className="hint">First load can take a moment for dev servers.</span>}
+                  <span>{t("preview.loading")}</span>
+                  {loadingSlow && <span className="hint">{t("preview.firstLoad")}</span>}
                 </div>
               )}
               <iframe
                 key={deployment.id + ":" + reloadKey}
                 className="preview-iframe"
                 src={previewHref + (reloadKey ? "?r=" + reloadKey : "")}
-                title={"Preview of " + branch}
+                title={t("preview.previewOf", { branch })}
                 onLoad={() => setFrameLoaded(true)}
                 allow="clipboard-read; clipboard-write"
               />
@@ -276,7 +276,7 @@ export function BrowserFrame({
         <div className="frame-compact-meta">
           <span className="mono">{deployment.shortSha}</span>
           <span className="dot-sep">·</span>
-          ready
+          {t("status.ready")}
         </div>
       )}
     </div>

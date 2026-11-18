@@ -7,7 +7,9 @@ import type {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, Copy, X } from "lucide-react";
-import { copyText, statusLabel, statusTone } from "../lib/format";
+import { copyText, statusTone } from "../lib/format";
+import { useI18n } from "../i18n";
+import type { TranslationKey } from "../i18n/dictionary";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
@@ -50,6 +52,8 @@ export function Spinner({ large = false }: { large?: boolean }) {
   return <span className={"spinner" + (large ? " spinner-lg" : "")} aria-hidden="true" />;
 }
 
+const STATUS_KEYS = new Set(["ready", "queued", "preparing", "installing", "starting", "error", "stopped"]);
+
 export function StatusPill({
   status,
   label,
@@ -59,10 +63,12 @@ export function StatusPill({
   label?: string;
   large?: boolean;
 }) {
+  const { t } = useI18n();
+  const key = (status && STATUS_KEYS.has(status) ? "status." + status : "status.notDeployed") as TranslationKey;
   return (
     <span className={"status status-" + statusTone(status) + (large ? " status-lg" : "")}>
       <span className="status-dot" />
-      {label || statusLabel(status)}
+      {label || t(key)}
     </span>
   );
 }
@@ -111,6 +117,7 @@ export function Modal({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -141,7 +148,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
       >
-        <button className="icon-btn modal-close" onClick={onClose} aria-label="Close dialog">
+        <button className="icon-btn modal-close" onClick={onClose} aria-label={t("common.closeDialog")}>
           <X size={16} />
         </button>
         {(title || description) && (
@@ -162,7 +169,7 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = "Delete",
+  confirmLabel,
   confirmationText,
   busy = false,
   onCancel,
@@ -177,6 +184,7 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState("");
   useEffect(() => {
     if (open) setValue("");
@@ -192,10 +200,10 @@ export function ConfirmDialog({
       footer={
         <>
           <Button onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={disabled || busy} loading={busy}>
-            {confirmLabel}
+            {confirmLabel || t("common.delete")}
           </Button>
         </>
       }
@@ -203,7 +211,7 @@ export function ConfirmDialog({
       {confirmationText && (
         <div className="field">
           <label className="label">
-            Type <span className="mono">{confirmationText}</span> to confirm
+            {t("confirm.typeTo", { text: confirmationText })}
           </label>
           <input
             className="input"
@@ -265,7 +273,7 @@ export function Skeleton({
 
 export function CopyButton({
   value,
-  label = "Copy",
+  label,
   className = "btn btn-sm btn-secondary",
   onCopied,
 }: {
@@ -274,6 +282,7 @@ export function CopyButton({
   className?: string;
   onCopied?: () => void;
 }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
@@ -286,10 +295,11 @@ export function CopyButton({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1600);
   };
+  const showLabel = label !== "";
   return (
     <button className={className} onClick={copy} type="button">
       {copied ? <Check size={13} /> : <Copy size={13} />}
-      {copied ? "Copied" : label}
+      {showLabel && (copied ? t("common.copied") : label || t("common.copy"))}
     </button>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { GitBranch, RefreshCw, Search } from "lucide-react";
+import { useT } from "../i18n";
 import { relativeTime } from "../lib/format";
 import type { Branch, Deployment } from "../lib/types";
 import { Skeleton, Spinner } from "./ui";
@@ -32,6 +33,7 @@ export function BranchPanel({
   onSelect: (branch: string) => void;
   onRefresh: () => void;
 }) {
+  const t = useT();
   const [filter, setFilter] = useState("");
 
   const visible = useMemo(() => {
@@ -49,15 +51,15 @@ export function BranchPanel({
     <aside className="branch-panel">
       <div className="branch-panel-head">
         <div className="branch-panel-title">
-          <h2>Branches</h2>
+          <h2>{t("preview.branches")}</h2>
           <span className="branch-count">{branches.length}</span>
         </div>
         <button
           className="icon-btn"
           onClick={onRefresh}
           disabled={refreshing}
-          title="Refresh branches"
-          aria-label="Refresh branches"
+          title={t("preview.refreshBranches")}
+          aria-label={t("preview.refreshBranches")}
         >
           {refreshing ? <Spinner /> : <RefreshCw size={14} />}
         </button>
@@ -67,8 +69,8 @@ export function BranchPanel({
         <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="Find a branch…"
-          aria-label="Filter branches"
+          placeholder={t("preview.search")}
+          aria-label={t("preview.filterAria")}
         />
       </div>
       <div className="branch-list">
@@ -81,7 +83,7 @@ export function BranchPanel({
             </div>
           ))}
         {!loading && visible.length === 0 && (
-          <p className="branch-empty">No branches match “{filter}”.</p>
+          <p className="branch-empty">{t("preview.noMatch", { query: filter })}</p>
         )}
         {!loading &&
           visible.map((branch) => {
@@ -102,7 +104,7 @@ export function BranchPanel({
                 <div className="branch-item-top">
                   <GitBranch size={11} className="branch-item-icon" />
                   <span className="branch-item-name mono truncate">{branch.name}</span>
-                  {branch.isDefault && <span className="branch-tag">prod</span>}
+                  {branch.isDefault && <span className="branch-tag">{t("preview.prod")}</span>}
                 </div>
                 <div className="branch-item-subject truncate">
                   {branch.subject || "No commit message"}
@@ -116,17 +118,17 @@ export function BranchPanel({
                       <span className={"branch-state branch-state-" + deployment.status}>
                         <span className="branch-state-dot" />
                         {deployment.status === "ready"
-                          ? "ready"
+                          ? t("preview.stateReady")
                           : deployment.status === "error"
-                            ? "error"
+                            ? t("preview.stateError")
                             : deployment.status === "stopped"
-                              ? "idle"
-                              : "building"}
+                              ? t("preview.stateIdle")
+                              : t("preview.building")}
                       </span>
                     ) : (
                       <span className="branch-state branch-state-none">
                         <span className="branch-state-dot" />
-                        new
+                        {t("preview.new")}
                       </span>
                     )}
                   </span>
@@ -136,7 +138,7 @@ export function BranchPanel({
           })}
       </div>
       <div className="branch-panel-foot">
-        <span>Click a branch to preview it instantly.</span>
+        <span>{t("preview.clickHint")}</span>
       </div>
     </aside>
   );

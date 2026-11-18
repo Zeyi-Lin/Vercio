@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
+import { useT } from "../i18n";
 import { projectSlug, truncateMiddle } from "../lib/format";
 import type { Project } from "../lib/types";
 import { useToast } from "../components/Toast";
@@ -29,6 +30,7 @@ export function ProjectSettings({
 }) {
   const { systemInfo, settings, saveSettings } = useApp();
   const { pushToast } = useToast();
+  const t = useT();
   const [name, setName] = useState(project.name);
   const [tagline, setTagline] = useState(project.tagline);
   const [links, setLinks] = useState(project.links || []);
@@ -58,9 +60,9 @@ export function ProjectSettings({
         links: links.filter((link) => link.url.trim() || link.label.trim()),
       });
       onReload();
-      pushToast("Project settings saved", "success");
+      pushToast(t("settings.saved"), "success");
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not save settings", "error");
+      pushToast(error instanceof Error ? error.message : t("settings.saveError"), "error");
     } finally {
       setSaving(false);
     }
@@ -71,9 +73,9 @@ export function ProjectSettings({
     try {
       await api.refreshProject(project.id);
       onReload();
-      pushToast("Repository refreshed", "success");
+      pushToast(t("settings.refreshed"), "success");
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not refresh repository", "error");
+      pushToast(error instanceof Error ? error.message : t("settings.refreshError"), "error");
     } finally {
       setRefreshing(false);
     }
@@ -84,7 +86,7 @@ export function ProjectSettings({
     try {
       await saveSettings({ userName: displayName.trim() });
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not save profile", "error");
+      pushToast(error instanceof Error ? error.message : t("profile.error"), "error");
     } finally {
       setSavingProfile(false);
     }
@@ -95,10 +97,10 @@ export function ProjectSettings({
     try {
       await api.deleteProject(project.id, project.source.kind !== "path");
       setDeleteOpen(false);
-      pushToast("Project removed", "success");
+      pushToast(t("settings.danger.deleted"), "success");
       onDeleted();
     } catch (error) {
-      pushToast(error instanceof Error ? error.message : "Could not delete project", "error");
+      pushToast(error instanceof Error ? error.message : t("settings.deleteError"), "error");
     } finally {
       setDeleting(false);
     }
@@ -116,27 +118,27 @@ export function ProjectSettings({
         <section className="card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Project details</h2>
-              <p className="card-subtitle">How this project appears across Vercio.</p>
+              <h2 className="card-title">{t("settings.details.title")}</h2>
+              <p className="card-subtitle">{t("settings.details.subtitle")}</p>
             </div>
           </div>
           <div className="card-body settings-form">
-            <Field label="Project name">
+            <Field label={t("settings.name")}>
               <TextInput value={name} onChange={(event) => setName(event.target.value.slice(0, 80))} />
             </Field>
-            <Field label="Tagline" hint="A single line shown under the project name.">
+            <Field label={t("settings.tagline")} hint={t("settings.taglineHint")}>
               <TextInput
                 value={tagline}
                 onChange={(event) => setTagline(event.target.value.slice(0, 300))}
-                placeholder="AI meeting notes for teams that ship."
+                placeholder={t("settings.taglinePlaceholder")}
               />
             </Field>
-            <Field label="Links" hint="Product site, docs, design files — anything your team needs.">
+            <Field label={t("settings.links")} hint={t("settings.linksHint")}>
               <div className="link-editor">
                 {links.map((link, index) => (
                   <div className="link-row" key={index}>
                     <TextInput
-                      placeholder="Label"
+                      placeholder={t("settings.linkLabel")}
                       value={link.label}
                       onChange={(event) => updateLink(index, { label: event.target.value })}
                     />
@@ -148,7 +150,7 @@ export function ProjectSettings({
                     <button
                       className="icon-btn"
                       onClick={() => setLinks((current) => current.filter((_, linkIndex) => linkIndex !== index))}
-                      aria-label="Remove link"
+                      aria-label={t("settings.removeLink")}
                     >
                       <X size={14} />
                     </button>
@@ -160,13 +162,13 @@ export function ProjectSettings({
                   icon={<Plus size={13} />}
                   onClick={() => setLinks((current) => [...current, { label: "", url: "" }])}
                 >
-                  Add link
+                  {t("settings.addLink")}
                 </Button>
               </div>
             </Field>
             <div className="settings-form-actions">
               <Button variant="primary" onClick={save} loading={saving}>
-                Save changes
+                {t("settings.save")}
               </Button>
             </div>
           </div>
@@ -175,8 +177,8 @@ export function ProjectSettings({
         <section className="card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Repository</h2>
-              <p className="card-subtitle">Source, branch and worktree configuration.</p>
+              <h2 className="card-title">{t("settings.repo.title")}</h2>
+              <p className="card-subtitle">{t("settings.repo.subtitle")}</p>
             </div>
             <Button
               size="sm"
@@ -185,12 +187,12 @@ export function ProjectSettings({
               onClick={refreshRepo}
               disabled={refreshing}
             >
-              Fetch latest
+              {t("settings.fetchLatest")}
             </Button>
           </div>
           <div className="card-body repo-details">
             <div className="detail-row">
-              <span className="detail-label">Source</span>
+              <span className="detail-label">{t("settings.source")}</span>
               <span className="detail-value">
                 {project.source.url ? (
                   <a href={project.source.url} target="_blank" rel="noreferrer" className="detail-link">
@@ -198,55 +200,51 @@ export function ProjectSettings({
                     <span className="mono">{project.source.url.replace(/^https?:\/\//, "")}</span>
                   </a>
                 ) : (
-                  <span className="mono">{projectSlug(project)}</span>
+                  <span className="mono">{project.isDemo ? t("project.demoRepository") : projectSlug(project)}</span>
                 )}
               </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Local path</span>
+              <span className="detail-label">{t("settings.localPath")}</span>
               <span className="detail-value mono" title={project.repoPath}>
                 {truncateMiddle(project.repoPath, 52)}
               </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Default branch</span>
+              <span className="detail-label">{t("settings.defaultBranch")}</span>
               <span className="detail-value mono"><GitBranch size={11} /> {project.defaultBranch}</span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Checked out branch</span>
+              <span className="detail-label">{t("settings.checkedOut")}</span>
               <span className="detail-value mono">{project.currentBranch || "—"}</span>
             </div>
             {project.dirtyCount > 0 && (
               <div className="dirty-note">
                 <AlertCircle size={13} />
-                {project.dirtyCount} uncommitted file{project.dirtyCount === 1 ? "" : "s"} in the working copy.
-                Previews only use committed branches.
+                {t("settings.dirtyNote", { count: project.dirtyCount })}
               </div>
             )}
-            <p className="hint" style={{ marginTop: 4 }}>
-              Previews are created from isolated git worktrees under your Vercio data directory, so
-              branches can run side by side without touching your working copy.
-            </p>
+            <p className="hint" style={{ marginTop: 4 }}>{t("settings.worktreeHint")}</p>
           </div>
         </section>
 
         <section className="card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Local profile</h2>
-              <p className="card-subtitle">Used when you comment or leave notes.</p>
+              <h2 className="card-title">{t("settings.profile.title")}</h2>
+              <p className="card-subtitle">{t("settings.profile.subtitle")}</p>
             </div>
           </div>
           <div className="card-body settings-form">
-            <Field label="Display name">
+            <Field label={t("settings.profile.displayName")}>
               <div className="inline-field">
                 <TextInput
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value.slice(0, 60))}
-                  placeholder="e.g. Maya Chen"
+                  placeholder={t("settings.profile.placeholder")}
                 />
                 <Button onClick={saveProfile} loading={savingProfile}>
-                  Save
+                  {t("common.save")}
                 </Button>
               </div>
             </Field>
@@ -257,22 +255,20 @@ export function ProjectSettings({
           <div className="card-head">
             <div>
               <h2 className="card-title">
-                <ShieldAlert size={15} /> Danger zone
+                <ShieldAlert size={15} /> {t("settings.danger.title")}
               </h2>
-              <p className="card-subtitle">Remove this project from the workspace.</p>
+              <p className="card-subtitle">{t("settings.danger.subtitle")}</p>
             </div>
           </div>
           <div className="card-body danger-body">
             <div>
-              <strong>Delete project</strong>
+              <strong>{t("settings.danger.delete")}</strong>
               <p className="hint">
-                Removes previews and workspace data.{project.source.kind !== "path"
-                  ? " The cloned repository will also be deleted."
-                  : " Your local repository on disk is never touched."}
+                {project.source.kind !== "path" ? t("settings.danger.hintClone") : t("settings.danger.hintLocal")}
               </p>
             </div>
             <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteOpen(true)}>
-              Delete project
+              {t("settings.danger.delete")}
             </Button>
           </div>
         </section>
@@ -283,35 +279,35 @@ export function ProjectSettings({
         <section className="card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Workspace</h2>
-              <p className="card-subtitle">This Vercio instance.</p>
+              <h2 className="card-title">{t("settings.workspace.title")}</h2>
+              <p className="card-subtitle">{t("settings.workspace.subtitle")}</p>
             </div>
             <Share2 size={15} className="muted" />
           </div>
           <div className="card-body repo-details">
             <div className="detail-row">
-              <span className="detail-label">Network</span>
+              <span className="detail-label">{t("settings.workspace.network")}</span>
               <span className="detail-value mono truncate">{systemInfo?.primaryUrl.replace(/^https?:\/\//, "")}</span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Data</span>
+              <span className="detail-label">{t("settings.workspace.data")}</span>
               <span className="detail-value mono truncate" title={systemInfo?.dataDir}>
                 {truncateMiddle(systemInfo?.dataDir || "", 30)}
               </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Version</span>
+              <span className="detail-label">{t("settings.workspace.version")}</span>
               <span className="detail-value mono">v{systemInfo?.version}</span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Max live previews</span>
+              <span className="detail-label">{t("settings.workspace.maxPreviews")}</span>
               <span className="detail-value">{systemInfo?.maxPreviews ?? "—"}</span>
             </div>
             {systemInfo && (
               <div className="settings-copy-row">
                 <CopyButton
                   value={systemInfo.primaryUrl}
-                  label="Copy workspace link"
+                  label={t("settings.workspace.copyLink")}
                   className="btn btn-sm btn-secondary"
                 />
               </div>
@@ -322,16 +318,11 @@ export function ProjectSettings({
 
       <ConfirmDialog
         open={deleteOpen}
-        title={"Delete " + project.name + "?"}
+        title={t("settings.danger.confirmTitle", { name: project.name })}
         description={
-          <>
-            This removes the project, its deployments, notes and comments from Vercio.
-            {project.source.kind !== "path"
-              ? " The cloned repository in the Vercio data folder will be deleted too."
-              : " Your local repository is not touched."}
-          </>
+          project.source.kind !== "path" ? t("settings.danger.confirmDescClone") : t("settings.danger.confirmDescLocal")
         }
-        confirmLabel="Delete project"
+        confirmLabel={t("settings.danger.delete")}
         confirmationText={project.name}
         busy={deleting}
         onCancel={() => setDeleteOpen(false)}

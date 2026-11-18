@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { api } from "../lib/api";
 import { useDebouncedCallback, useEventStream } from "../lib/hooks";
+import { useT } from "../i18n";
 import type { Overview, Settings, Stats, SystemInfo } from "../lib/types";
 import { useToast } from "../components/Toast";
 
@@ -50,6 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeModal, setActiveModal] = useState<ModalName | null>(null);
   const [authorName, setAuthorName] = useState("");
   const { pushToast } = useToast();
+  const t = useT();
   const hasLoaded = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -61,14 +63,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStats(systemData.stats);
       setError(null);
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Cannot reach the Vercio server");
+      setError(refreshError instanceof Error ? refreshError.message : t("dashboard.networkError"));
     } finally {
       if (!hasLoaded.current) {
         hasLoaded.current = true;
         setLoading(false);
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     refresh();
@@ -110,9 +112,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           window.localStorage.setItem("vercio:author", patch.userName);
         } catch {}
       }
-      pushToast("Profile updated", "success");
+      pushToast(t("profile.toast"), "success");
     },
-    [pushToast]
+    [pushToast, t]
   );
 
   const openModal = useCallback((name: ModalName) => setActiveModal(name), []);

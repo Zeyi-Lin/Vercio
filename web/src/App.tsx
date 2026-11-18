@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { RouterProvider, matchRoute, useRouter } from "./lib/router";
+import { I18nProvider, useT } from "./i18n";
 import { ToastProvider } from "./components/Toast";
 import { AppProvider, useApp } from "./context/AppContext";
 import { TopNav } from "./components/TopNav";
@@ -14,6 +15,7 @@ import { NotFound } from "./pages/NotFound";
 
 function Footer() {
   const { systemInfo } = useApp();
+  const t = useT();
   return (
     <footer className="footer">
       <div className="container footer-inner">
@@ -21,7 +23,7 @@ function Footer() {
           <LogoMark className="footer-mark" />
           <span>Vercio</span>
           <span className="footer-sep">/</span>
-          <span className="muted">Local-first frontend collaboration</span>
+          <span className="muted">{t("footer.local")}</span>
         </div>
         <div className="footer-meta">
           {systemInfo?.lanUrls[0] && (
@@ -34,7 +36,7 @@ function Footer() {
           <span className="footer-sep">·</span>
           <span className="footer-status">
             <span className="share-chip-dot" />
-            {systemInfo ? "Online" : "Starting"}
+            {systemInfo ? t("footer.online") : t("footer.starting")}
           </span>
         </div>
       </div>
@@ -104,11 +106,13 @@ function AppShell() {
 export function App() {
   return (
     <RouterProvider>
-      <ToastProvider>
-        <AppProvider>
-          <AppShell />
-        </AppProvider>
-      </ToastProvider>
+      <I18nProvider>
+        <ToastProvider>
+          <AppProvider>
+            <AppShell />
+          </AppProvider>
+        </ToastProvider>
+      </I18nProvider>
     </RouterProvider>
   );
 }

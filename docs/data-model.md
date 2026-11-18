@@ -54,6 +54,7 @@ db.json
 | `originUrl` | string | `updateGitMeta` | 远端 URL，可能为空 |
 | `dirtyCount` | number | `updateGitMeta` | 工作副本未提交文件数（`git status --porcelain`） |
 | `branchCount` | number | `updateGitMeta` | 本地+远程分支去重后的数量 |
+| `pinnedBranch` | string \| null | update | 分支列表置顶的分支名，最多一个；`null`/空串取消；PATCH 时用 `listBranches` 校验存在性，不存在返回 422 |
 | `latestCommit` | object \| null | `updateGitMeta` | 默认分支最新提交 `{shortSha,message,author,date,timestamp,branch}` |
 | `framework` | object \| null | 部署检测时 | `{label,type,kind,packageManager}`，随预览更新 |
 | `importLog` | string[] | `startImport` | **内部字段**，最多 100 行，不对外暴露 |

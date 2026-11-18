@@ -176,7 +176,7 @@ curl -sL "$BASE/preview/<dpl>/" | head
 6. Notes：新建、自动保存、切分支关联、pin、删除、刷新后仍在。
 7. Overview：编辑 brief 保存；README 展开；git refresh。
 8. Settings：改名称/标语/链接、删除项目（输入名称确认）。
-9. 顶栏：EN/中文、亮/暗、刷新后保持；Share 二维码/LAN 地址。
+9. 顶栏：Share 二维码/LAN 地址；头像 → 本地资料里 EN/中文、亮/暗，刷新后保持。
 10. 添加项目：本地 tab 点「浏览」应弹出**主机**的系统文件夹窗口；取消不报错；无 GUI 环境应回退页内浏览器。
 11. 手机宽度（DevTools）走一遍 Dashboard/Previews；确认无横向溢出。
 12. 浏览器 console 无报错；Network 里无失败的 API。

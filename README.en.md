@@ -82,7 +82,7 @@ Code-level documentation for contributors and AI coding agents lives in [docs/](
 ## Usage
 
 1. **Add a project** — GitHub repositories are cloned into `.vercio/repos/`; local repositories are referenced in place and your working copy is never modified.
-2. **Previews** — click a branch in the left panel. If that branch is not running yet, Vercio asks before starting a local dev server; the first start creates an isolated worktree, installs dependencies and streams logs. Repeat visits reuse the running preview. Use the expand button in the browser chrome for a fullscreen, chrome-free preview (Esc exits).
+2. **Previews** — click a branch in the left panel to switch instantly; Vercio never starts a dev server by itself. A branch that is not running yet shows a **Start preview** button — pressing it creates an isolated worktree, installs dependencies and streams logs. Repeat visits reuse the running preview. Use the expand button in the browser chrome for an immersive preview that fills the browser viewport (tabs and address bar stay visible); Esc or the bottom pill exits.
 3. **Compare** — click **Compare**, choose another branch on the right, and inspect two live frontends side by side.
 4. **Discussion** — open **Discussion** on a preview to leave branch-specific feedback. Everyone on the network sees it instantly.
 5. **Brief and notes** — write the product brief on the Overview tab and keep design reviews, launch checklists and open questions in Notes. Markdown, autosave and tags included.
@@ -114,6 +114,7 @@ Package managers are detected from lockfiles: pnpm, yarn, bun or npm.
 - **Stable preview URLs** — iframes load `/preview/<deploymentId>/`, which redirects to the right port. Absolute asset paths, Vite HMR and built static output all keep working, and LAN devices automatically get redirects based on their own hostname.
 - **Dependency cache** — hashes `package.json` + lockfile and caches `node_modules` under `.vercio/deps/<projectId>/<hash>/`. If the project working copy already has matching dependencies, that folder is reused.
 - **Save-to-preview** — previewing the checked-out branch mirrors your uncommitted changes (modified/added/deleted/renamed files and `.env*`) into the isolated preview worktree, so saving a file hot-reloads the iframe. Other branches keep their committed snapshot.
+- **Branch pinning** — right-click any branch in the previews sidebar to pin it to the top of the list (one pinned branch at a time); right-click again to unpin. The pin is stored on the project and survives reloads and restarts.
 - **Local environment variables** — preview worktrees inherit the gitignored `.env*` files from the working copy (files the branch commits itself win), so apps that require `VITE_*` variables start up in branch previews instead of rendering a blank page.
 - **State and logs** — deployment updates stream over SSE; preparation/install/startup logs live in memory and `.vercio/logs/`.
 - **Local persistence** — `.vercio/db.json` is written atomically and stores projects, deployments, notes, comments and settings.

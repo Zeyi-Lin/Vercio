@@ -192,8 +192,7 @@ reloads: Record<branch, number>
 changes: BranchChanges | null
 commentCount: number
 notes: Note[]（给讨论面板的关联笔记）
-pendingStart: string（待用户确认「是否在本地启动」的分支名）
-focus: boolean（全屏预览模式）
+focus: boolean（浏览器视口内的沉浸预览模式）
 inflight: ref<Set<branch>>（防重复请求）
 ```
 
@@ -204,11 +203,10 @@ inflight: ref<Set<branch>>（防重复请求）
 - 同分支请求在 `inflight` 中 → 不重复发；
 - 成功后写入 `deployments[branch]`；未就绪则拉一次日志。
 
-**本地服务的启动必须由用户明确触发**：页面加载、深链、切换分支、切换 compare 分支都不会调用 `api.deploy`；只有三种入口会真正启动：
+**本地服务的启动必须由用户明确触发**：页面加载、深链、切换分支、切换 compare 分支都不会调用 `api.deploy`；只有两种入口会真正启动：
 
-1. 点击未运行的分支 → 先弹确认框（`pendingStart`），确认后启动；取消则保留选中并显示「启动预览」面板；
-2. 预览舞台的 idle / stopped 状态里的「启动预览」按钮（显式操作，不再二次确认）；
-3. 失败状态的「重试预览」（`ensureDeployment(branch, true)`）。
+1. 预览舞台的 idle / stopped 状态里的「启动预览」按钮（切换分支本身不会启动服务）；
+2. 失败状态的「重试预览」（`ensureDeployment(branch, true)`）。
 
 初始分支：URL `?branch=` 命中分支列表则用它，否则 `defaultBranch`；只同步已有部署快照，不自动启动。若 `?compare=` 命中且不等于初始分支，则自动打开对比（同样不自动启动第二个 pane）。
 
@@ -268,13 +266,15 @@ inflight: ref<Set<branch>>（防重复请求）
 
 ### ProjectPreviews（`pages/ProjectPreviews.tsx`）
 
-全屏两栏（`.previews`，`grid-template-columns: 240px 1fr`，无卡片边框/圆角，高度吃满 `.project-workspace`）：
+全屏两栏（`.previews`，`grid-template-columns: 200px 1fr`，无卡片边框/圆角，高度吃满 `.project-workspace`）：
 
-- 左 `BranchPanel`：分支标题 + 计数 + 刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
+- 左 `BranchPanel`：分支标题 + 计数 + 收起/刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
+- 右键分支卡弹出上下文菜单：置顶 / 取消置顶（`Project.pinnedBranch`，同一时间最多一个）。置顶分支排到列表最前并显示 pin 图标；动作乐观更新并 PATCH `/api/projects/:id`，失败回滚 + toast。底部提示被窄栏截断时，完整文案放在 `title` tooltip 里。
+- 分支栏可折叠成 44px 竖排窄条（`.previews-branches-collapsed`，只留展开/刷新按钮与分支数）；折叠状态存 `localStorage` 的 `vercio:branch-panel-collapsed`，≤860px 堆叠布局下强制展开并隐藏收起按钮。
 - 中 `preview-stage`：工具栏（分支名/状态/LIVE 徽标/mode/prod 标签 + 设备切换 + Discussion + Settings）、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、Share）。
 - 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
-- 点击未运行的分支会先弹「要在本地运行这个分支吗？」确认框；取消后分支仍选中，预览舞台显示 idle 状态和「启动预览」按钮。任何自动路径都不会 POST deploy。
-- 浏览器框右上角有「全屏预览」按钮：对包裹 `BrowserFrame` 的 `.preview-frame-wrap` 调 `requestFullscreen()`（不可用时退回 CSS `.is-focus` 固定定位），进入后只显示 iframe 页面，底部居中浮层 `退出全屏 Esc`；原生全屏下 Esc 由浏览器处理，`fullscreenchange` 同步状态；兜底模式监听 `keydown`，但焦点在跨源 iframe 内时收不到 Esc，此时用浮层按钮退出。预览状态变为非 ready 时自动退出全屏。
+- 点击分支只切换视图；未运行的分支显示 idle 状态和「启动预览」按钮，不弹确认框。任何自动路径都不会 POST deploy。
+- 浏览器框右上角有「全屏预览」按钮：给 `.preview-frame-wrap` 加 `.is-focus`（`position: fixed; inset: 0`），只铺满**浏览器视口**，浏览器标签页和地址栏仍可见（不调用原生 Fullscreen API，不会占满显示器）。进入后只显示 iframe 页面，底部居中浮层 `退出全屏 Esc`；父页面监听 `keydown` 处理 Esc（点击 iframe 内部后焦点进入跨源文档、Esc 不再冒泡，此时用浮层按钮退出）。预览状态变为非 ready 时自动退出。
 - 设备切换在 compare 时禁用；compare 的第二个 pane 用 `<select>` 选分支；未运行的分支在 pane 里直接给「启动预览」按钮。
 - 讨论面板（`previews-with-discussion`）展开为第三栏，打开时隐藏 compare 与底部左侧提交信息。
 - 空分支/加载/错误各有独立状态；宽度 ≤860px 时工作区改为上下堆叠并允许页面滚动。
@@ -311,14 +311,14 @@ inflight: ref<Set<branch>>（防重复请求）
 | --- | --- | --- |
 | `ui.tsx` | Button/Spinner/StatusPill/Badge/Modal/ConfirmDialog/Field/TextInput/TextArea/Skeleton/CopyButton/EmptyState/Kbd | `Modal` 用 portal、Escape、锁 body 滚动；无 focus trap；`ConfirmDialog` 可要求输入确认文本；`StatusPill` 依赖 `format.statusTone` 与 `status.*` 文案 |
 | `Toast.tsx` | 全局 toast | 最多保留 4 条；error 6.5s，其余 3.8s；`useToast().pushToast` |
-| `TopNav.tsx` | 顶栏 | 搜索入口、Share、语言、主题、头像；项目路由下显示 `项目 ›` + 项目 mark/名称/仓库路径/分支数/默认分支/未提交警告（窄屏逐级隐藏，数据来自 overview 里的 Project）；Dashboard 只显示「项目」 |
+| `TopNav.tsx` | 顶栏 | 搜索入口、Share、头像（语言/主题在「本地资料」弹窗里）；项目路由下显示 `项目 ›` + 项目 mark/名称/仓库路径/分支数/默认分支/未提交警告（窄屏逐级隐藏，数据来自 overview 里的 Project）；点项目名称弹出切换菜单（列出所有项目，保留当前 tab，Escape/外部点击关闭）；Dashboard 只显示「项目」 |
 | `CommandPalette.tsx` | 命令面板 | 项目跳转 + 添加/演示/分享/复制地址/刷新；↑↓/Enter/Esc；分组 |
 | `AddProjectModal.tsx` | 添加项目 | GitHub/本地两个 tab；「浏览」先调系统文件夹窗口，成功填入路径；5xx（504 除外）时 toast 并回退到页内目录选择器；创建后跳项目页 |
 | `DirectoryPickerModal.tsx` | 页内目录选择器（系统窗口回退） | 只列目录、Git 标记、面包屑、快捷根、显示隐藏、请求序号防竞态；Escape 捕获阶段 `stopImmediatePropagation` 避免连带关闭父模态框；只能选 Git 仓库 |
 | `ShareModal.tsx` / `ShareCard.tsx` | 分享 | 二维码 data URL、LAN 地址列表、复制；无 LAN 时提示 |
 | `ProfileModal.tsx` | 本地资料 | 显示名保存到服务端 settings；语言/主题切换 |
 | `LanguageSwitcher.tsx` | EN/中文 | 即点即生效并持久化 |
-| `ThemeToggle.tsx` | 亮/暗 | `useTheme().toggleTheme` |
+| `ThemeToggle.tsx` | 亮/暗 | 顶栏不再放置；主题切换在「本地资料」弹窗的 segmented 控件（`useTheme`） |
 | `ProjectCard.tsx` | 项目卡 | `ProjectMark` 按名称哈希色相；导入/失败/未部署状态；最新提交 |
 | `DeploymentList.tsx` | 部署列表 | 表格与紧凑两种；链接到 `?branch=` |
 | `BranchPanel.tsx` | 分支列表 | 过滤 name/subject/author；每分支部署状态；prod 标签 |
@@ -397,8 +397,8 @@ renderMarkdown = (src) => DOMPurify.sanitize(marked.parse(src), { ADD_ATTR: ["ta
 - **跨源限制**：iframe 的 origin 是 `http://host:41xx`，与父页面不同源。父页面不能读取/修改预览 DOM，也没有注入脚本；要做元素级评论必须新增 postMessage 协议或代理方案。
 - **Compare**：只在至少 2 个分支时可用；第二个 pane 的分支选择会排除当前主分支；两 pane 共享 device；讨论与 compare 互斥。
 - **重试**：`ensureDeployment(branch, true)` 新建部署；不会复用 error/stopped 记录。
-- **不自动启动本地服务**：分支点击、初始加载、深链 `?branch=`/`?compare=`、切换 compare 分支都只切换视图；启动要走确认框或显式「启动预览」按钮。分支已有 ready/pending 部署时直接复用，不算启动。
-- **全屏预览**：包装层 requestFullscreen + CSS 兜底；iframe 与父页面跨源，键盘事件不会冒泡，所以依赖原生全屏的 Esc 与浮层退出按钮；`fullscreenchange` 负责同步 `focus` 状态，非 ready 时自动退出。兜底（未拿到原生全屏）时 Esc 只在焦点留在父页面时生效。
+- **不自动启动本地服务**：分支点击、初始加载、深链 `?branch=`/`?compare=`、切换 compare 分支都只切换视图，不弹确认框、不 POST deploy；启动只能通过显式的「启动预览」/「重试预览」按钮。分支已有 ready/pending 部署时直接复用，不算启动。
+- **全屏预览**：`focus` 状态给包装层加 `.is-focus`，`position: fixed; inset: 0` 只覆盖浏览器视口，标签栏/地址栏保留；不调用原生 Fullscreen API。Esc 由父页面 `keydown` 处理；iframe 跨源，焦点进入预览后键盘事件不冒泡，此时用底部浮层按钮退出；预览非 ready 时自动退出。
 - **停止**：调用 stop API 后更新本地 map；如果服务端返回 409（已停），toast 错误。
 - **笔记深链**：`/notes?note=<id>` 只在挂载时读取；从讨论面板点关联笔记会走 `Link` 导航，ProjectPage 不重新挂载（同一路由 tab 变化），但 `ProjectNotes` 监听 `project.id` 而非 query，**切换 note query 不一定切换选中笔记**。这是已知行为，改深链时要一起处理。
 - **相对时间**：`relativeTime()` 在渲染时计算，没有定时器；页面不重渲染时不会自动“变旧”。

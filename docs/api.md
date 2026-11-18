@@ -33,6 +33,7 @@
   originUrl: string;
   dirtyCount: number;        // 工作副本未提交文件数
   branchCount: number;
+  pinnedBranch: string | null; // 分支列表置顶的分支名（最多一个），null 表示未置顶
   framework: { label: string; type: "server" | "static"; kind: string; packageManager: string } | null;
   description: string;       // Markdown product brief
   tagline: string;
@@ -352,16 +353,19 @@ SystemInfo = {
 
 ### `PATCH /api/projects/:id`
 
-允许字段：`name`、`description`、`tagline`、`links`。
+允许字段：`name`、`description`、`tagline`、`links`、`pinnedBranch`。
 
 ```json
 {
   "name": "Lumen",
   "tagline": "AI meeting notes",
   "description": "## Brief\n...",
-  "links": [{ "label": "Docs", "url": "https://..." }]
+  "links": [{ "label": "Docs", "url": "https://..." }],
+  "pinnedBranch": "feat/aurora-hero"
 }
 ```
+
+`pinnedBranch` 语义：分支列表里置顶的分支名，**最多一个**；传 `null` 或空串取消置顶，置顶其它分支会替换原值。非字符串 → 400；分支不存在 → 422（服务端会用 `listBranches` 校验）。项目不是 `ready` 状态 → 409。
 
 - `description` 截断 20000，其余字符串截断 300。
 - `links` 最多 8 条；非数组忽略；每项 `label` 80、`url` 500。

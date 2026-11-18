@@ -7,7 +7,6 @@ import {
   MessageSquare,
   Minimize2,
   Monitor,
-  Play,
   RefreshCw,
   Settings,
   Smartphone,
@@ -17,7 +16,7 @@ import {
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
-import { useInterval } from "../lib/hooks";
+import { useInterval, useMediaQuery } from "../lib/hooks";
 import { relativeTime } from "../lib/format";
 import { frameworkLabel } from "../lib/framework";
 import { Link, useRouter } from "../lib/router";
@@ -32,7 +31,7 @@ import { useToast } from "../components/Toast";
 import { BranchPanel } from "../components/BranchPanel";
 import { BrowserFrame, isPendingStatus } from "../components/PreviewPane";
 import { CommentsPanel } from "../components/CommentsPanel";
-import { Badge, Button, EmptyState, Modal, Skeleton, StatusPill } from "../components/ui";
+import { Badge, Button, EmptyState, Skeleton, StatusPill } from "../components/ui";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -41,6 +40,8 @@ const DEVICES: { id: Device; labelKey: "preview.device.desktop" | "preview.devic
   { id: "tablet", labelKey: "preview.device.tablet", icon: Tablet },
   { id: "mobile", labelKey: "preview.device.mobile", icon: Smartphone },
 ];
+
+const BRANCH_PANEL_COLLAPSED_KEY = "vercio:branch-panel-collapsed";
 
 export function ProjectPreviews({
   project,
@@ -71,13 +72,33 @@ export function ProjectPreviews({
   const [changes, setChanges] = useState<BranchChanges | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [pendingStart, setPendingStart] = useState("");
+  const [pinnedBranch, setPinnedBranch] = useState<string | null>(project.pinnedBranch ?? null);
   const [focus, setFocus] = useState(false);
+  const [branchesCollapsed, setBranchesCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(BRANCH_PANEL_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const narrowWorkspace = useMediaQuery("(max-width: 860px)");
+  // The stacked mobile layout needs the full panel; ignore the stored fold there.
+  const branchesFolded = branchesCollapsed && !narrowWorkspace;
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const focusRef = useRef<HTMLDivElement | null>(null);
   const inflight = useRef<Set<string>>(new Set());
   const deploymentsRef = useRef(deployments);
   deploymentsRef.current = deployments;
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(BRANCH_PANEL_COLLAPSED_KEY, branchesCollapsed ? "1" : "0");
+    } catch {}
+  }, [branchesCollapsed]);
+
+  // Keep the pin in sync when the project is refreshed from another view.
+  useEffect(() => {
+    setPinnedBranch(project.pinnedBranch ?? null);
+  }, [project.id, project.pinnedBranch]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -95,53 +116,17 @@ export function ProjectPreviews({
     };
   }, [menuOpen]);
 
-  const exitFocus = useCallback(async () => {
-    setFocus(false);
-    try {
-      const doc = document as Document & {
-        webkitFullscreenElement?: Element | null;
-        webkitExitFullscreen?: () => Promise<void>;
-      };
-      if (document.fullscreenElement || doc.webkitFullscreenElement) {
-        if (document.exitFullscreen) await document.exitFullscreen();
-        else await doc.webkitExitFullscreen?.();
-      }
-    } catch {}
-  }, []);
-
-  const enterFocus = useCallback(async () => {
-    setFocus(true);
-    const node = focusRef.current as
-      | (HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> })
-      | null;
-    if (!node) return;
-    try {
-      if (node.requestFullscreen) await node.requestFullscreen();
-      else await node.webkitRequestFullscreen?.();
-    } catch {
-      // Native fullscreen can be blocked; the CSS immersive mode + Esc still works.
-    }
-  }, []);
-
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      const doc = document as Document & { webkitFullscreenElement?: Element | null };
-      if (!document.fullscreenElement && !doc.webkitFullscreenElement) setFocus(false);
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
-    };
-  }, []);
+  // Immersive preview fills the browser viewport only: browser tabs and the
+  // address bar stay visible, unlike the native Fullscreen API.
+  const enterFocus = useCallback(() => setFocus(true), []);
+  const exitFocus = useCallback(() => setFocus(false), []);
 
   useEffect(() => {
     if (!focus) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        void exitFocus();
+        exitFocus();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -152,20 +137,6 @@ export function ProjectPreviews({
       document.body.style.overflow = previousOverflow;
     };
   }, [focus, exitFocus]);
-
-  useEffect(() => {
-    return () => {
-      const doc = document as Document & {
-        webkitFullscreenElement?: Element | null;
-        webkitExitFullscreen?: () => Promise<void>;
-      };
-      const active = document.fullscreenElement || doc.webkitFullscreenElement;
-      if (active && active === focusRef.current) {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-        else doc.webkitExitFullscreen?.().catch(() => {});
-      }
-    };
-  }, []);
 
   const loadBranches = useCallback(
     async (silent = false) => {
@@ -246,11 +217,6 @@ export function ProjectPreviews({
       null,
     [data]
   );
-
-  const canReuseDeployment = (deployment: Deployment | null): boolean =>
-    Boolean(
-      deployment && (deployment.status === "ready" || isPendingStatus(deployment.status))
-    );
 
   const ensureDeployment = useCallback(
     async (branch: string, force = false): Promise<Deployment | null> => {
@@ -364,7 +330,7 @@ export function ProjectPreviews({
   const fetchedLogSnapshots = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    if (focus && primaryDeployment?.status !== "ready") void exitFocus();
+    if (focus && primaryDeployment?.status !== "ready") exitFocus();
   }, [focus, primaryDeployment?.status, exitFocus]);
 
   // The status poll stops as soon as a deployment reaches a terminal state, and
@@ -451,9 +417,9 @@ export function ProjectPreviews({
 
   const selectBranch = (branch: string) => {
     if (!branch || branch === selected) return;
+    // Switching is side-effect free: an unstarted branch just shows the
+    // "preview not running" panel with an explicit start button.
     applySelection(branch);
-    // Running a dev server is a local side effect: ask before starting one.
-    if (!canReuseDeployment(deploymentFor(branch))) setPendingStart(branch);
   };
 
   const toggleCompare = () => {
@@ -479,6 +445,24 @@ export function ProjectPreviews({
   const retryBranch = (branch: string) => {
     ensureDeployment(branch, true);
   };
+
+  const pinBranch = useCallback(
+    async (branch: string | null) => {
+      const previous = pinnedBranch;
+      setPinnedBranch(branch);
+      try {
+        const result = await api.updateProject(project.id, { pinnedBranch: branch });
+        setPinnedBranch(result.project.pinnedBranch ?? null);
+      } catch (pinError) {
+        setPinnedBranch(previous);
+        pushToast(
+          pinError instanceof Error ? pinError.message : t("preview.pinError"),
+          "error"
+        );
+      }
+    },
+    [pinnedBranch, project.id, pushToast, t]
+  );
 
   const stopBranch = async (branch: string) => {
     const deployment = deploymentsRef.current[branch];
@@ -554,7 +538,13 @@ export function ProjectPreviews({
   const selectedIsDefault = data?.branches.find((branch) => branch.name === selected)?.isDefault;
 
   return (
-    <div className={"previews" + (showComments ? " previews-with-discussion" : "")}>
+    <div
+      className={
+        "previews" +
+        (branchesFolded ? " previews-branches-collapsed" : "") +
+        (showComments ? " previews-with-discussion" : "")
+      }
+    >
       <BranchPanel
         branches={data?.branches || []}
         loading={loading}
@@ -565,6 +555,10 @@ export function ProjectPreviews({
         refreshing={branchRefreshing}
         onSelect={selectBranch}
         onRefresh={() => loadBranches(false)}
+        pinnedBranch={pinnedBranch}
+        onPinBranch={pinBranch}
+        collapsed={branchesFolded}
+        onToggleCollapsed={() => setBranchesCollapsed((value) => !value)}
         footerActions={
           <div className="toolbar-menu" ref={menuRef}>
             <button
@@ -692,7 +686,7 @@ export function ProjectPreviews({
 
         <div className={"preview-panes" + (compare ? " preview-panes-compare" : "")}>
           {selected ? (
-            <div className={"preview-frame-wrap" + (focus ? " is-focus" : "")} ref={focusRef}>
+            <div className={"preview-frame-wrap" + (focus ? " is-focus" : "")}>
               <BrowserFrame
                 deployment={primaryDeployment}
                 branch={selected}
@@ -703,13 +697,13 @@ export function ProjectPreviews({
                 onStart={() => startBranch(selected)}
                 onRetry={() => retryBranch(selected)}
                 onStop={primaryDeployment ? () => stopBranch(selected) : undefined}
-                onFullscreen={() => void enterFocus()}
+                onFullscreen={enterFocus}
               />
               {focus && (
                 <button
                   type="button"
                   className="preview-focus-exit"
-                  onClick={() => void exitFocus()}
+                  onClick={exitFocus}
                 >
                   <Minimize2 size={14} />
                   {t("preview.exitFullscreen")}
@@ -814,34 +808,6 @@ export function ProjectPreviews({
           onCountChange={setCommentCount}
         />
       )}
-
-      <Modal
-        open={Boolean(pendingStart)}
-        onClose={() => setPendingStart("")}
-        size="sm"
-        title={t("preview.confirmStart.title")}
-        description={
-          pendingStart ? t("preview.confirmStart.desc", { branch: pendingStart }) : undefined
-        }
-        footer={
-          <>
-            <Button onClick={() => setPendingStart("")}>{t("preview.confirmStart.later")}</Button>
-            <Button
-              variant="primary"
-              icon={<Play size={13} />}
-              onClick={() => {
-                const branch = pendingStart;
-                setPendingStart("");
-                startBranch(branch);
-              }}
-            >
-              {t("preview.start")}
-            </Button>
-          </>
-        }
-      >
-        <p className="hint">{t("preview.confirmStart.hint")}</p>
-      </Modal>
     </div>
   );
 }

@@ -139,6 +139,7 @@ export class ProjectsManager {
       originUrl: project.originUrl || "",
       dirtyCount: project.dirtyCount || 0,
       branchCount: project.branchCount || 0,
+      pinnedBranch: project.pinnedBranch || null,
       framework: project.framework || null,
       description: project.description || "",
       tagline: project.tagline || "",
@@ -215,6 +216,7 @@ export class ProjectsManager {
         description: "",
         tagline: "",
         links: [],
+        pinnedBranch: null,
         status: "ready",
         error: null,
         createdAt: nowIso(),
@@ -239,6 +241,7 @@ export class ProjectsManager {
       description: "",
       tagline: "",
       links: [],
+      pinnedBranch: null,
       status: "importing",
       error: null,
       createdAt: nowIso(),
@@ -312,6 +315,7 @@ export class ProjectsManager {
       description: DEMO_DESCRIPTION,
       tagline: "AI meeting notes for teams that ship.",
       links: [],
+      pinnedBranch: null,
       status: "ready",
       error: null,
       isDemo: true,
@@ -374,6 +378,25 @@ export class ProjectsManager {
           label: String(link.label || "Link").slice(0, 80),
           url: String(link.url).slice(0, 500),
         }));
+    }
+    if (patch.pinnedBranch !== undefined) {
+      if (patch.pinnedBranch === null || patch.pinnedBranch === "") {
+        project.pinnedBranch = null;
+      } else if (typeof patch.pinnedBranch !== "string") {
+        throw new HttpError(400, "pinnedBranch must be a branch name or null");
+      } else {
+        const wanted = patch.pinnedBranch.trim().slice(0, 255);
+        if (!wanted) {
+          project.pinnedBranch = null;
+        } else {
+          if (project.status !== "ready") throw new HttpError(409, "Project is not ready");
+          const { branches } = await listBranches(project.repoPath);
+          if (!branches.some((branch) => branch.name === wanted)) {
+            throw new HttpError(422, "Branch not found: " + wanted);
+          }
+          project.pinnedBranch = wanted;
+        }
+      }
     }
     project.updatedAt = nowIso();
     this.store.markDirty();

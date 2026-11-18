@@ -39,6 +39,32 @@ test("project, notes, comments, LAN info and static preview lifecycle", { timeou
   assert.equal(patched.status, 200);
   assert.match(patched.json.project.description, /Product brief/);
 
+  // Only one branch can be pinned; it persists on the project record.
+  const pinned = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranch: "feat/blue",
+  });
+  assert.equal(pinned.status, 200);
+  assert.equal(pinned.json.project.pinnedBranch, "feat/blue");
+  const pinnedReload = await request(ctx.base, "GET", "/api/projects/" + project.id);
+  assert.equal(pinnedReload.json.project.pinnedBranch, "feat/blue");
+
+  const missingBranch = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranch: "no/such-branch",
+  });
+  assert.equal(missingBranch.status, 422);
+  const badPinType = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranch: 42,
+  });
+  assert.equal(badPinType.status, 400);
+  const stillPinned = await request(ctx.base, "GET", "/api/projects/" + project.id);
+  assert.equal(stillPinned.json.project.pinnedBranch, "feat/blue");
+
+  const unpinned = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranch: null,
+  });
+  assert.equal(unpinned.status, 200);
+  assert.equal(unpinned.json.project.pinnedBranch, null);
+
   const branches = await request(ctx.base, "GET", "/api/projects/" + project.id + "/branches");
   assert.equal(branches.status, 200);
   assert.equal(branches.json.branches.length, 2);

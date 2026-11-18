@@ -274,7 +274,7 @@ inflight: ref<Set<branch>>（防重复请求）
 - 中 `preview-stage`：工具栏（分支名/状态/LIVE 徽标/mode/prod 标签 + 设备切换 + Discussion + Settings）、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、Share）。
 - 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
 - 点击未运行的分支会先弹「要在本地运行这个分支吗？」确认框；取消后分支仍选中，预览舞台显示 idle 状态和「启动预览」按钮。任何自动路径都不会 POST deploy。
-- 浏览器框右上角有「全屏预览」按钮：对包裹 `BrowserFrame` 的 `.preview-frame-wrap` 调 `requestFullscreen()`（不可用时退回 CSS `.is-focus` 固定定位），进入后只显示 iframe 页面，右上角浮层 `退出全屏 Esc`；原生全屏下 Esc 由浏览器处理，`fullscreenchange` 同步状态，兜底模式监听 `keydown`。预览状态变为非 ready 时自动退出全屏。
+- 浏览器框右上角有「全屏预览」按钮：对包裹 `BrowserFrame` 的 `.preview-frame-wrap` 调 `requestFullscreen()`（不可用时退回 CSS `.is-focus` 固定定位），进入后只显示 iframe 页面，底部居中浮层 `退出全屏 Esc`；原生全屏下 Esc 由浏览器处理，`fullscreenchange` 同步状态；兜底模式监听 `keydown`，但焦点在跨源 iframe 内时收不到 Esc，此时用浮层按钮退出。预览状态变为非 ready 时自动退出全屏。
 - 设备切换在 compare 时禁用；compare 的第二个 pane 用 `<select>` 选分支；未运行的分支在 pane 里直接给「启动预览」按钮。
 - 讨论面板（`previews-with-discussion`）展开为第三栏，打开时隐藏 compare 与底部左侧提交信息。
 - 空分支/加载/错误各有独立状态；宽度 ≤860px 时工作区改为上下堆叠并允许页面滚动。
@@ -398,7 +398,7 @@ renderMarkdown = (src) => DOMPurify.sanitize(marked.parse(src), { ADD_ATTR: ["ta
 - **Compare**：只在至少 2 个分支时可用；第二个 pane 的分支选择会排除当前主分支；两 pane 共享 device；讨论与 compare 互斥。
 - **重试**：`ensureDeployment(branch, true)` 新建部署；不会复用 error/stopped 记录。
 - **不自动启动本地服务**：分支点击、初始加载、深链 `?branch=`/`?compare=`、切换 compare 分支都只切换视图；启动要走确认框或显式「启动预览」按钮。分支已有 ready/pending 部署时直接复用，不算启动。
-- **全屏预览**：包装层 requestFullscreen + CSS 兜底；iframe 与父页面跨源，键盘事件不会冒泡，所以依赖原生全屏的 Esc 与浮层退出按钮；`fullscreenchange` 负责同步 `focus` 状态，非 ready 时自动退出。
+- **全屏预览**：包装层 requestFullscreen + CSS 兜底；iframe 与父页面跨源，键盘事件不会冒泡，所以依赖原生全屏的 Esc 与浮层退出按钮；`fullscreenchange` 负责同步 `focus` 状态，非 ready 时自动退出。兜底（未拿到原生全屏）时 Esc 只在焦点留在父页面时生效。
 - **停止**：调用 stop API 后更新本地 map；如果服务端返回 409（已停），toast 错误。
 - **笔记深链**：`/notes?note=<id>` 只在挂载时读取；从讨论面板点关联笔记会走 `Link` 导航，ProjectPage 不重新挂载（同一路由 tab 变化），但 `ProjectNotes` 监听 `project.id` 而非 query，**切换 note query 不一定切换选中笔记**。这是已知行为，改深链时要一起处理。
 - **相对时间**：`relativeTime()` 在渲染时计算，没有定时器；页面不重渲染时不会自动“变旧”。

@@ -176,6 +176,7 @@ CLI 参数：`node server/index.js --port 4001 --host 127.0.0.1 --data-dir ~/.ve
 | --- | --- | --- |
 | GET | `/api/overview` | 工作台数据（项目、最近部署、统计） |
 | GET | `/api/system` | 版本、局域网地址、二维码、设置 |
+| GET | `/api/fs/browse?path=&showHidden=` | 目录浏览（只返回文件夹名、标记 Git 仓库） |
 | POST | `/api/projects` | 从 GitHub URL / 本地路径添加项目 |
 | POST | `/api/projects/demo` | 载入内置演示项目 |
 | PATCH | `/api/projects/:id` | 更新名称、标语、描述、链接 |
@@ -201,6 +202,7 @@ vercio/
 │       ├── deployments.js  # worktree、依赖、进程、端口、日志
 │       ├── projects.js     # 项目导入、GitHub clone、演示项目
 │       ├── git.js          # git 命令封装
+│       ├── browse.js       # 文件夹浏览（目录列表、Git 仓库标记）
 │       ├── frameworks.js   # 框架检测与启动参数
 │       ├── demo.js         # 演示仓库生成
 │       ├── lan.js          # 局域网地址、Wi-Fi 名称、二维码

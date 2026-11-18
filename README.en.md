@@ -130,6 +130,7 @@ CLI flags: `node server/index.js --port 4001 --host 127.0.0.1 --data-dir ~/.verc
 | --- | --- | --- |
 | GET | `/api/overview` | Dashboard data |
 | GET | `/api/system` | Version, LAN URLs, QR code, settings |
+| GET | `/api/fs/browse?path=&showHidden=` | Folder browser (directory names only, Git repos flagged) |
 | POST | `/api/projects` | Add a GitHub / local project |
 | POST | `/api/projects/demo` | Load the bundled demo |
 | PATCH | `/api/projects/:id` | Update name, tagline, description, links |

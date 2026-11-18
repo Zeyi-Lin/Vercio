@@ -231,6 +231,38 @@ export function ProjectPreviews({ project }: { project: Project }) {
 
   const primaryDeployment = deployments[selected] || null;
   const compareDeployment = compareBranch ? deployments[compareBranch] || null : null;
+  const fetchedLogSnapshots = useRef<Record<string, string>>({});
+
+  // The status poll stops as soon as a deployment reaches a terminal state, and
+  // SSE refreshes can flip that state before the poll gets another tick. Keep a
+  // log snapshot per deployment/status transition so failed or stopped previews
+  // always show the complete output (including anything the process flushed
+  // while shutting down, which arrives just after the error).
+  useEffect(() => {
+    const targets = [primaryDeployment, compare ? compareDeployment : null].filter(
+      (item): item is Deployment => Boolean(item)
+    );
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const deployment of targets) {
+      const snapshot = deployment.id + ":" + deployment.status;
+      if (fetchedLogSnapshots.current[deployment.id] === snapshot) continue;
+      fetchedLogSnapshots.current[deployment.id] = snapshot;
+      fetchLogs(deployment.id);
+      if (!isPendingStatus(deployment.status)) {
+        timers.push(setTimeout(() => fetchLogs(deployment.id), 600));
+      }
+    }
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [
+    primaryDeployment?.id,
+    primaryDeployment?.status,
+    compare,
+    compareDeployment?.id,
+    compareDeployment?.status,
+    fetchLogs,
+  ]);
 
   const pendingDeployments = useMemo(() => {
     const list: Deployment[] = [];

@@ -21,6 +21,8 @@ import { findFreePort, isPortResponding, releasePort, waitForHttp } from "./port
 
 const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 const MAX_LOG_LINES = 4000;
+const ERROR_HINT_RE =
+  /(error|failed|failure|fatal|exception|eaddrinuse|eacces|econnrefused|already in use|not found|cannot|can't|unable|denied|missing|invalid)/i;
 
 function nowIso() {
   return new Date().toISOString();
@@ -28,6 +30,23 @@ function nowIso() {
 
 function safeText(value) {
   return String(value || "").replace(ANSI_RE, "").replace(/\r/g, "");
+}
+
+/**
+ * Resolves when `promise` settles or after `timeoutMs`, whichever comes first.
+ * Used to give a terminated child process a brief moment to flush its stdio
+ * before the failure is recorded, so the error state always carries the full
+ * dev-server output.
+ */
+function settleWithin(promise, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
+    Promise.resolve(promise).catch(() => {}).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 export class DeploymentManager {
@@ -268,6 +287,28 @@ export class DeploymentManager {
     }
   }
 
+  /**
+   * Pulls the most useful line out of the captured dev-server output so the
+   * failure panel can say *why* the preview died instead of only "exited".
+   * Walks the buffer backwards and ignores Vercio's own step lines, package
+   * manager echoes, stack frames and npm lifecycle noise.
+   */
+  failureHint(deploymentId) {
+    const buffer = this.logs.get(deploymentId);
+    if (!buffer || !buffer.length) return "";
+    for (let index = buffer.length - 1; index >= 0; index -= 1) {
+      const line = safeText(buffer[index]).trim();
+      if (!line) continue;
+      if (/^\[\d{1,2}:\d{2}:\d{2}\]/.test(line)) continue;
+      if (/^(?:\$|>)\s/.test(line) || /^[\u203a»]\s/.test(line)) continue;
+      if (/^\s*at\s/.test(line)) continue;
+      if (/^\s*(?:ELIFECYCLE|npm ERR!)/.test(line)) continue;
+      if (!ERROR_HINT_RE.test(line)) continue;
+      return line.replace(/^(?:error|fatal):\s*/i, "").slice(0, 240);
+    }
+    return "";
+  }
+
   setStatus(deployment, status) {
     if (deployment.status === status) return;
     deployment.status = status;
@@ -381,6 +422,7 @@ export class DeploymentManager {
 
   async run(deployment, project) {
     let child = null;
+    let childClosed = null;
     try {
       this.setStatus(deployment, "preparing");
       if (!fs.existsSync(path.join(project.repoPath, ".git"))) {
@@ -452,6 +494,7 @@ export class DeploymentManager {
         stdio: ["ignore", "pipe", "pipe"],
       });
       this.children.set(deployment.id, child);
+      childClosed = new Promise((resolve) => child.once("close", resolve));
 
       let exited = null;
       child.stdout.on("data", (chunk) => this.appendLog(deployment, chunk.toString()));
@@ -485,13 +528,19 @@ export class DeploymentManager {
           signal: controller.signal,
         });
       } catch (error) {
+        const detail = this.failureHint(deployment.id);
         if (exited) {
+          const cause = exited.signal || "code " + exited.code;
+          if (detail) {
+            throw new Error("Dev server exited before it became ready (" + cause + "): " + detail);
+          }
           throw new Error(
             "Dev server exited before it became ready (" +
-              (exited.signal || "code " + exited.code) +
+              cause +
               "). Check the command and logs above."
           );
         }
+        if (detail) throw new Error(error.message + ": " + detail);
         throw error;
       }
       if (deployment.status === "error") throw new Error("Preview cancelled");
@@ -504,6 +553,14 @@ export class DeploymentManager {
       this.afterReady(project, deployment);
     } catch (error) {
       if (this.stopping.has(deployment.id) && deployment.status === "stopped") return;
+      // Wait for the dev server to finish dying so its remaining stdio is in
+      // the log before we snapshot the failure (the UI renders that snapshot).
+      if (child) {
+        if (child.exitCode === null && child.signalCode === null) {
+          this.killChild(deployment.id);
+        }
+        await settleWithin(childClosed, 750);
+      }
       this.fail(deployment, error.message || "Preview failed");
       if (deployment.port) {
         releasePort(deployment.port);

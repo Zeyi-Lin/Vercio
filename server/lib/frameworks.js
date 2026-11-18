@@ -155,16 +155,17 @@ export function installCommand(packageManager) {
 
 function scriptInvocation(packageManager, script, extraArgs = []) {
   if (!script) return null;
-  if (packageManager === "yarn") {
-    return { command: "yarn", args: ["run", script, ...extraArgs] };
+  const args = ["run", script];
+  if (!extraArgs.length) return { command: packageManager, args };
+  // Only npm needs the `--` separator: it otherwise interprets flags that follow
+  // the script name (e.g. `--port`) as npm's own options. pnpm, yarn and bun
+  // forward everything after the script name verbatim, so adding `--` leaks a
+  // literal `--` into the dev server - Vite (and other CAC-based CLIs) treat
+  // that as "end of options" and silently ignore the port/host overrides.
+  if (packageManager === "npm") {
+    return { command: "npm", args: [...args, "--", ...extraArgs] };
   }
-  if (packageManager === "pnpm") {
-    return { command: "pnpm", args: ["run", script, ...(extraArgs.length ? ["--", ...extraArgs] : [])] };
-  }
-  if (packageManager === "bun") {
-    return { command: "bun", args: ["run", script, ...(extraArgs.length ? ["--", ...extraArgs] : [])] };
-  }
-  return { command: "npm", args: ["run", script, ...(extraArgs.length ? ["--", ...extraArgs] : [])] };
+  return { command: packageManager, args: [...args, ...extraArgs] };
 }
 
 /**

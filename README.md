@@ -39,6 +39,7 @@
 - **产品空间**：每个项目都有可编辑的 Product brief（Markdown）、README 预览、项目笔记（Markdown、标签、置顶、自动保存、可关联分支）和分支讨论区。
 - **框架自动识别**：Next.js、Vite、Astro、SvelteKit、Remix、Nuxt、CRA、Vue CLI、Gatsby、自定义 dev server、纯静态站点，自动生成正确的端口与 host 参数。
 - **依赖缓存**：按 `package.json + lockfile` 指纹缓存 `node_modules`；如果本地工作副本已经装好了依赖，会直接复用软链，避免重复安装。
+- **本地环境变量**：预览 worktree 会自动带上工作副本里被 gitignore 的 `.env*` 文件（分支已提交的同名文件优先），所以依赖 `VITE_*` 等变量的前端在分支预览里也能正常启动，不再白屏。
 - **系统文件夹选择器**：添加本地项目时点「浏览」直接打开系统自带的文件夹窗口（macOS / Windows / Linux），选好仓库后路径自动填入，不用手动输入长路径；没有图形界面时自动退回页面内目录浏览。
 - **过程可视**：准备 worktree、安装依赖、启动 dev server 的每一步都有实时日志与状态；失败时可以看完整日志，一键重试。
 - **本地优先**：代码、分支、产品描述、笔记、评论全部存在本机 `.vercio/` 目录里，不上传任何东西。
@@ -107,6 +108,11 @@ npm run start:open  # 启动并自动打开浏览器
 npm test            # 后端集成测试
 npm run typecheck   # TypeScript 检查
 ```
+
+
+## 技术文档
+
+面向二次开发与 AI Coding 的代码级文档在 [docs/](docs/README.md)：架构与预览流水线、服务端/前端结构、API 契约、数据模型、开发与排查，以及一份 [AI Coding 指南](docs/ai-coding.md)。AI agent 可从 [AGENTS.md](AGENTS.md) 进入。
 
 
 ## 使用流程

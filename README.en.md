@@ -75,6 +75,10 @@ npm test            # backend integration tests
 npm run typecheck   # TypeScript checks
 ~~~
 
+## Technical docs
+
+Code-level documentation for contributors and AI coding agents lives in [docs/](docs/README.md): architecture and the preview pipeline, server/frontend internals, the API contract, data model, development and debugging, plus an [AI coding guide](docs/ai-coding.md). AI agents can start from [AGENTS.md](AGENTS.md).
+
 ## Usage
 
 1. **Add a project** — GitHub repositories are cloned into `.vercio/repos/`; local repositories are referenced in place and your working copy is never modified.
@@ -109,6 +113,7 @@ Package managers are detected from lockfiles: pnpm, yarn, bun or npm.
 - **Port allocation** — previews use free ports in `4100–4999` and bind to `0.0.0.0`. Up to 8 previews stay alive; the oldest is stopped when the limit is exceeded.
 - **Stable preview URLs** — iframes load `/preview/<deploymentId>/`, which redirects to the right port. Absolute asset paths, Vite HMR and built static output all keep working, and LAN devices automatically get redirects based on their own hostname.
 - **Dependency cache** — hashes `package.json` + lockfile and caches `node_modules` under `.vercio/deps/<projectId>/<hash>/`. If the project working copy already has matching dependencies, that folder is reused.
+- **Local environment variables** — preview worktrees inherit the gitignored `.env*` files from the working copy (files the branch commits itself win), so apps that require `VITE_*` variables start up in branch previews instead of rendering a blank page.
 - **State and logs** — deployment updates stream over SSE; preparation/install/startup logs live in memory and `.vercio/logs/`.
 - **Local persistence** — `.vercio/db.json` is written atomically and stores projects, deployments, notes, comments and settings.
 - **Bundled demo** — `examples/demo/` generates a real four-branch Git repository with seeded notes and comments.

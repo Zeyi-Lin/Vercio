@@ -16,9 +16,11 @@ Vercel's frontend collaboration used to mean connecting a GitHub repo to the clo
 - **Product workspace** — editable product brief, rendered README, Markdown notes with tags, pinning, autosave and branch linking, and per-branch discussions.
 - **Framework detection** — Next.js, Vite, Astro, SvelteKit, Remix, Nuxt, CRA, Vue CLI, Gatsby, custom dev servers and static sites get the right port and host flags automatically.
 - **Dependency caching** — cache `node_modules` by `package.json` + lockfile fingerprint; reuse the working copy's dependencies when they match.
+- **Local folder picker** — browse directories on this machine when adding a local project; Git repositories are flagged and the path is filled in for you.
 - **Visible progress** — live logs for worktree preparation, dependency install and dev-server startup; retry after failures, stop previews on demand.
 - **Local-first** — code, branches, product briefs, notes and comments live in `.vercio/` on this machine. Nothing is uploaded.
 - **Chinese / English UI** — auto-detects the browser language and can be switched with the **EN / 中文** control in the top bar. Project content stays in its original language.
+- **Light / dark themes** — follows the system appearance on first visit and can be toggled with the sun/moon button in the top bar (or from the local profile dialog). The preference is remembered. The **full-width layout** uses the whole screen so wide previews and deployment tables stay comfortable on large monitors.
 
 ## Screenshots
 
@@ -34,9 +36,13 @@ Vercel's frontend collaboration used to mean connecting a GitHub repo to the clo
 | --- | --- |
 | ![Overview](docs/images/overview.jpg) | ![Share](docs/images/share.jpg) |
 
-| Chinese UI | English UI |
+| Chinese UI (dark) | English UI (dark) |
 | --- | --- |
 | ![Chinese UI](docs/images/dashboard-zh.jpg) | ![English UI](docs/images/dashboard.jpg) |
+
+| Light mode · dashboard | Light mode · branch preview |
+| --- | --- |
+| ![Light dashboard](docs/images/dashboard-light.jpg) | ![Light preview](docs/images/previews-light.jpg) |
 
 ## Quick start
 
@@ -144,15 +150,23 @@ CLI flags: `node server/index.js --port 4001 --host 127.0.0.1 --data-dir ~/.verc
 npm test
 ~~~
 
-Coverage: Git branch parsing and diffs, project/note/comment APIs, static preview redirects, custom dev-server preview lifecycle and shutdown, concurrent worktree isolation, and demo project generation with two real branch previews.
+Coverage: Git branch parsing and diffs, project/note/comment APIs, static preview redirects, custom dev-server preview lifecycle and shutdown, concurrent worktree isolation, the folder browser (directories only, Git detection, tilde expansion and error handling), and demo project generation with two real branch previews.
 
-Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, autosave a note, edit the brief and settings, add/delete a project, mobile layouts) with no console errors, plus typecheck and production build.
+Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, autosave a note, edit the brief and settings, add/delete a project, pick a local folder, mobile layouts), light/dark switching with persistence, a 1920px full-width layout, plus typecheck and production build — all with no console errors.
+
+## Languages and themes
+
+- The UI ships in **Chinese / English**. The browser language is used on first visit; switch any time with the **EN / 中文** control.
+- Project content (branches, README, briefs, notes, comments) is shown as authored and is not translated.
+- **Light / dark themes** follow `prefers-color-scheme` on first visit and can be toggled with the sun/moon button in the top bar or from the local profile dialog. The choice is persisted in `vercio:theme`; theme styles live in [web/src/styles/theme-light.css](web/src/styles/theme-light.css).
+- Pages use a **full-width layout** with responsive gutters, so wide screens make the most of branch previews, compare panes and deployment tables.
 
 ## Security and limitations
 
 - Vercio is designed for **your machine and a trusted LAN**. There is no authentication — never expose port 4000 directly to the public internet. Use a firewall or an authenticated reverse proxy if needed.
 - Preview processes bind to `0.0.0.0`, so devices on the same Wi-Fi can reach preview ports directly.
 - Private GitHub repositories rely on your local Git credentials (SSH key or credential helper). Clone jobs run in the background and can be retried from the project page.
+- The local folder picker lists directories on the machine running Vercio (directory names only, never file contents). Anyone who can reach Vercio on the LAN can see those paths — only run it on trusted networks.
 - The first preview of a stack may take a while to install dependencies; later previews reuse the lockfile cache. Vercio previews via dev servers rather than running production builds (static branches host existing static files).
 - Verified on macOS with Node 25. Node 20.19+/22.12+ should work; Windows path and process-group handling are untested.
 

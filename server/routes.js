@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { browseDirectory } from "./lib/browse.js";
 import { HttpError, isInside, readJSONBody, sendError, sendJSON, serveStaticFile } from "./lib/http.js";
 import { newId } from "./lib/ids.js";
 import { getSystemInfo } from "./lib/lan.js";
@@ -173,6 +174,17 @@ export function createRequestHandler(deps) {
             comments: state.comments.length,
           },
         });
+        return;
+      }
+
+      // Folder browser for the "new project" dialog. Lists directories on the
+      // machine that runs Vercio so users can pick a repository without typing
+      // an absolute path. Files and file contents are never returned.
+      if (pathname === "/api/fs/browse" && req.method === "GET") {
+        const listing = await browseDirectory(query.get("path") || "", {
+          showHidden: query.get("showHidden") === "1",
+        });
+        sendJSON(res, 200, { listing });
         return;
       }
 

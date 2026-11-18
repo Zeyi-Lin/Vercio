@@ -6,6 +6,20 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="Vercio — 本地分支预览与前端协作 / local-first, Vercel-style previews for every branch on your LAN." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("vercio:theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+          document.documentElement.dataset.theme = theme;
+        } catch (error) {}
+      })();
+    </script>
     <title>Vercio — 本地分支预览 / Local previews for every branch</title>
   </head>
   <body>

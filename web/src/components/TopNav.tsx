@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { LogoMark } from "./Logo";
 import { Kbd } from "./ui";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function TopNav() {
   const { overview, settings, openModal } = useApp();
@@ -51,6 +52,7 @@ export function TopNav() {
             <span className="share-label">{t("nav.share")}</span>
           </button>
           <LanguageSwitcher />
+          <ThemeToggle />
           <button className="avatar-btn" onClick={() => openModal("profile")} aria-label={t("nav.profile")}>
             <span className="avatar">{initials(settings.userName || "Guest")}</span>
           </button>

@@ -5,6 +5,7 @@ import "@fontsource-variable/geist-mono";
 import "./styles/base.css";
 import "./styles/components.css";
 import "./styles/pages.css";
+import "./styles/theme-light.css";
 import { App } from "./App";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

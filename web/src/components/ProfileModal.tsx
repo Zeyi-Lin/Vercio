@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { UserRound } from "lucide-react";
+import { Moon, Sun, UserRound } from "lucide-react";
+import { useTheme } from "../theme";
 import { useApp } from "../context/AppContext";
 import { useI18n } from "../i18n";
 import { initials } from "../lib/format";
@@ -10,6 +11,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 export function ProfileModal() {
   const { activeModal, closeModal, settings, saveSettings } = useApp();
   const { t } = useI18n();
+  const { theme, setTheme } = useTheme();
   const open = activeModal === "profile";
   const [name, setName] = useState(settings.userName || "");
   const [busy, setBusy] = useState(false);
@@ -73,6 +75,28 @@ export function ProfileModal() {
           <div className="hint">{t("profile.languageHint")}</div>
         </div>
         <LanguageSwitcher compact />
+      </div>
+      <div className="profile-theme">
+        <div>
+          <div className="label">{t("theme.label")}</div>
+          <div className="hint">{t("theme.hint")}</div>
+        </div>
+        <div className="segmented">
+          <button
+            type="button"
+            className={"segmented-option" + (theme === "light" ? " active" : "")}
+            onClick={() => setTheme("light")}
+          >
+            <Sun size={11} /> {t("theme.light")}
+          </button>
+          <button
+            type="button"
+            className={"segmented-option" + (theme === "dark" ? " active" : "")}
+            onClick={() => setTheme("dark")}
+          >
+            <Moon size={11} /> {t("theme.dark")}
+          </button>
+        </div>
       </div>
       <div className="profile-note">
         <UserRound size={13} />

@@ -1,6 +1,7 @@
 import type {
   BranchChanges,
   BranchList,
+  BrowseListing,
   Comment,
   Deployment,
   Note,
@@ -14,10 +15,12 @@ import type {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  details?: unknown;
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -36,10 +39,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     payload = null;
   }
   if (!response.ok) {
-    const message =
-      (payload as { error?: { message?: string } } | null)?.error?.message ||
-      "Request failed (" + response.status + ")";
-    throw new ApiError(message, response.status);
+    const error = (payload as { error?: { message?: string; details?: unknown } } | null)?.error;
+    const message = error?.message || "Request failed (" + response.status + ")";
+    throw new ApiError(message, response.status, error?.details);
   }
   return payload as T;
 }
@@ -67,6 +69,13 @@ export const api = {
   },
   async createDemoProject() {
     return request<{ project: Project }>("/api/projects/demo", { method: "POST" });
+  },
+  async browseDirectory(target?: string, options: { showHidden?: boolean } = {}) {
+    const params = new URLSearchParams();
+    if (target) params.set("path", target);
+    if (options.showHidden) params.set("showHidden", "1");
+    const query = params.toString();
+    return request<{ listing: BrowseListing }>("/api/fs/browse" + (query ? "?" + query : ""));
   },
   async project(id: string) {
     return request<ProjectDetail>("/api/projects/" + encodeURIComponent(id));

@@ -46,6 +46,31 @@ export interface ProjectSource {
   path?: string;
 }
 
+export interface BrowseRoot {
+  kind: "home" | "desktop" | "documents" | "downloads";
+  path: string;
+}
+
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  hidden: boolean;
+  isGitRepo: boolean;
+}
+
+export interface BrowseListing {
+  path: string;
+  name: string;
+  parent: string | null;
+  isGitRepo: boolean;
+  isHome: boolean;
+  breadcrumbs: { label: string; path: string }[];
+  roots: BrowseRoot[];
+  entries: BrowseEntry[];
+  hiddenCount: number;
+  showHidden: boolean;
+}
+
 export interface LatestCommit {
   shortSha: string;
   message: string;

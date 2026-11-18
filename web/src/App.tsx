@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { RouterProvider, matchRoute, useRouter } from "./lib/router";
 import { I18nProvider, useT } from "./i18n";
+import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./components/Toast";
 import { AppProvider, useApp } from "./context/AppContext";
 import { TopNav } from "./components/TopNav";
@@ -106,13 +107,15 @@ function AppShell() {
 export function App() {
   return (
     <RouterProvider>
-      <I18nProvider>
-        <ToastProvider>
-          <AppProvider>
-            <AppShell />
-          </AppProvider>
-        </ToastProvider>
-      </I18nProvider>
+      <ThemeProvider>
+        <I18nProvider>
+          <ToastProvider>
+            <AppProvider>
+              <AppShell />
+            </AppProvider>
+          </ToastProvider>
+        </I18nProvider>
+      </ThemeProvider>
     </RouterProvider>
   );
 }

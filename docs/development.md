@@ -290,7 +290,7 @@ kill -TERM <pgid>   # 已验证是该预览进程组时
 | 环境变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `VERCIO_PORT` / `PORT` | 4000 | 主服务端口；`PORT` 优先级更低 |
-| `VERCIO_HOST` | 0.0.0.0 | 监听地址 |
+| `VERCIO_HOST` | 0.0.0.0 | 监听地址；通配地址会同时监听 IPv4 与 IPv6 |
 | `VERCIO_DATA_DIR` | `<repo>/.vercio` | 数据目录 |
 | `VERCIO_MAX_PREVIEWS` | 8 | 同时运行的 **server** 预览上限；静态预览不计入 |
 | `NODE_ENV` | 未使用 | 服务端不区分环境 |
@@ -314,7 +314,10 @@ CLI 覆盖：`--port/-p`、`--host`、`--data-dir`、`--open/-o`。
 | 依赖缓存导致奇怪错误 | 共享 node_modules/.vite、平台差异 | 删 `deps/<projectId>/<fingerprint>` 后重试 |
 | 刷新后笔记丢失 | 自动保存还在 700ms 防抖中 | 等 “Saved”；Cmd/Ctrl+S 立即保存 |
 | SSE 不更新 | 代理/防火墙缓冲、断线 | `curl -N` 验证；刷新页面 |
-| 手机打不开 | 防火墙/不同 Wi-Fi/绑定了 127.0.0.1 | 确认 `0.0.0.0` 与同一网段 |
+| 手机打不开 | 防火墙/不同 Wi-Fi/绑定了 127.0.0.1 | 先看启动输出：`Network` 行若显示 `disabled — bound to 127.0.0.1`，用 `--host 0.0.0.0` 重启；再确认手机与电脑同一网段 |
+| 手机一直转圈，服务端没有 `LAN client` 日志 | 请求根本没到服务：手机侧的 VPN/代理、浏览器缺少「本地网络」权限、路由器客户端隔离，或 Mac 上的 TUN/系统级代理拦截 | 见下方「局域网打不开的分层排查」 |
+| 服务端出现 `LAN client 192.168.x.x GET /` 但手机仍打不开 | 请求已到达，问题在页面/资源/预览，不在网络可达性 | 看手机浏览器 console；确认 `/assets/*` 能加载、预览端口 41xx 可达 |
+| 启动时出现 `VPN/TUN detected: utun4 198.18.0.0` | Clash/FlClash/sing-box 等系统级 TUN 代理（`auto-route` + `strict-route`）可能吞掉局域网入站流量 | 在代理里排除 `192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12`，关闭 strict route，或临时退出代理后重试 |
 | 点「浏览」没有窗口 | 在远程/无头机器上运行；无 zenity/kdialog；macOS 自动化权限 | 看服务端日志与 HTTP 501；会自动回退页内浏览器；勿期待窗口出现在访问者电脑 |
 | 系统文件夹窗口一直不返回 | 用户在主机上未操作 | 最长 5 分钟；关闭浏览器会 abort；可在主机上完成/取消 |
 | 重启后预览全 stopped | 设计如此 | 重新点分支；不会自动恢复 |
@@ -325,7 +328,25 @@ CLI 覆盖：`--port/-p`、`--host`、`--data-dir`、`--open/-o`。
 | 改了本地代码预览不更新 | 预览的分支不是工作副本当前 checked-out 分支（live 只对当前分支生效），或 live 已被暂停 | 看预览工具栏是否有 LIVE 标记；切换分支后重新点该分支部署。`git branch --show-current` 确认当前分支 |
 | 预览每 2 秒自动刷新一次 | 早期 live sync 无内容去重导致重复写文件 | 已用内容哈希去重；若仍出现看 `Live sync:` 日志里是否反复出现同一文件 |
 
-## 12. 提交前 checklist
+## 12. 局域网打不开的分层排查
+
+「服务在本机正常，但同一 Wi-Fi 的手机一直转圈」几乎都不是页面代码问题。按下面顺序逐层排除（每层都有可观察的证据，不要跳步）：
+
+1. **监听范围**：`lsof -nP -iTCP:4000 -sTCP:LISTEN` 应为 `TCP *:4000`；若只有 `127.0.0.1:4000`，说明被 `VERCIO_HOST` / `--host` 绑到了 loopback，启动输出也会明确写 `Network disabled — bound to ...`。通配地址现在会同时监听 IPv4 与 IPv6（macOS 的 `.local` 会优先解析到 IPv6）。
+2. **服务端自测（只能证明服务本身活着）**：`curl -s -o /dev/null -w '%{http_code}\n' http://<LAN IP>:4000/api/health`。注意本机访问自己的 LAN IP 走的是 loopback，**这一步通过不代表手机能到**。
+3. **看服务端是否真的收到请求**：有设备第一次连上时会打印
+   `●  LAN client 192.168.9.150  GET /`。
+   - 出现 → 请求已到达，问题在页面/资源/预览链路（看手机浏览器 console、`/assets/*`、预览 41xx）。
+   - 不出现 → 请求在到达 Node 之前就被丢了，继续第 4 步。
+4. **请求没到达时的常见原因**（按概率）：
+   - 手机侧开着 VPN/代理（Clash/Surge/Shadowrocket 等），把 `192.168.x.x` 也送进了代理。先在手机上关掉代理再试。
+   - 浏览器缺少「本地网络」权限：iOS 设置 → 隐私与安全性 → 本地网络；Android 的应用「本地网络」开关。微信/Chrome 等第三方浏览器比 Safari 更容易缺这项权限，**用 Safari 直接打开地址**做对照。
+   - Mac 上的系统级 TUN 代理（Clash/FlClash/sing-box）开了 `auto-route` + `strict-route`，会拦截「其它设备 → 本机」的流量。启动输出会打印 `VPN/TUN detected: ...`；在代理里排除 `192.168.0.0/16`、`10.0.0.0/8`、`172.16.0.0/12`，或关闭 strict route / 退出代理后重试。
+   - 路由器开了客户端隔离 / 访客网络，或手机连的是另一个 AP/VLAN（同名 SSID 也可能是不同网段）。对比两边 IP：先确认不是同一个地址（DHCP 租约冲突时手机会连到自己），再确认是否同网段（如都是 `192.168.9.x`）。
+   - macOS 15+ 的「本地网络」隐私：从没有该权限的 App（某些 IDE/终端）启动的 `node` 可能被拒。换到系统 Terminal.app 或给 VS Code 授予本地网络权限后重启。
+5. **仍无法解释时**：在 Mac 上 `sudo pfctl -s rules` 看是否有第三方 pf 规则；用另一台设备（不同手机/电脑）交叉验证，区分「这台手机」还是「整个网络」。
+
+## 13. 提交前 checklist
 
 ```bash
 npm run typecheck

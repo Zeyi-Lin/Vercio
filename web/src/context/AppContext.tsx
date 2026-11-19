@@ -15,6 +15,7 @@ import type { Overview, Settings, Stats, SystemInfo } from "../lib/types";
 import { useToast } from "../components/Toast";
 
 export type ModalName = "add-project" | "share" | "profile" | "palette";
+export type ShareTarget = { projectId: string; branch: string };
 
 interface AppContextValue {
   overview: Overview | null;
@@ -25,9 +26,10 @@ interface AppContextValue {
   error: string | null;
   refresh: () => Promise<void>;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
-  openModal: (name: ModalName) => void;
+  openModal: (name: ModalName, target?: ShareTarget) => void;
   closeModal: () => void;
   activeModal: ModalName | null;
+  shareTarget: ShareTarget | null;
   authorName: string;
 }
 
@@ -49,6 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<ModalName | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   const [authorName, setAuthorName] = useState("");
   const { pushToast } = useToast();
   const t = useT();
@@ -117,8 +120,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [pushToast, t]
   );
 
-  const openModal = useCallback((name: ModalName) => setActiveModal(name), []);
-  const closeModal = useCallback(() => setActiveModal(null), []);
+  const openModal = useCallback((name: ModalName, target?: ShareTarget) => {
+    setShareTarget(name === "share" && target ? target : null);
+    setActiveModal(name);
+  }, []);
+  const closeModal = useCallback(() => {
+    setShareTarget(null);
+    setActiveModal(null);
+  }, []);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -133,6 +142,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openModal,
       closeModal,
       activeModal,
+      shareTarget,
       authorName,
     }),
     [
@@ -147,6 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openModal,
       closeModal,
       activeModal,
+      shareTarget,
       authorName,
     ]
   );

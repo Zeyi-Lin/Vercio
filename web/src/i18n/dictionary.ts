@@ -78,6 +78,14 @@ export const en = {
   "share.noLanAddress": "No LAN address",
   "share.copiedToast": "Network link copied",
   "share.qrAlt": "QR code for {url}",
+  "share.branchTitle": "Share this branch",
+  "share.branchDescription":
+    "Open this link on any device on this Wi-Fi to land straight on the {branch} branch preview.",
+  "share.branchLinkLabel": "Branch preview link",
+  "share.branchHint":
+    "The link opens Vercio with this branch selected. The preview streams live while it keeps running on this machine.",
+  "share.copyBranchLink": "Copy branch link",
+  "share.branchCopiedToast": "Branch preview link copied",
 
   "add.title": "New project",
   "add.description": "Point Vercio at a repository. Every branch becomes a live preview.",
@@ -601,6 +609,14 @@ export const zh: Record<TranslationKey, string> = {
   "share.noLanAddress": "没有局域网地址",
   "share.copiedToast": "局域网链接已复制",
   "share.qrAlt": "{url} 的二维码",
+  "share.branchTitle": "分享此分支预览",
+  "share.branchDescription":
+    "在同一 Wi-Fi 的任何设备上打开这个链接，都会直接进入 {branch} 分支的预览。",
+  "share.branchLinkLabel": "分支预览链接",
+  "share.branchHint":
+    "链接会打开 Vercio 并选中这个分支；只要预览还在这台机器上运行，页面就会实时加载。",
+  "share.copyBranchLink": "复制分支链接",
+  "share.branchCopiedToast": "分支预览链接已复制",
 
   "add.title": "新建项目",
   "add.description": "指定一个仓库，让每个分支都变成实时预览。",

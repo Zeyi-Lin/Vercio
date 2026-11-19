@@ -402,6 +402,7 @@ ps -axo pid,pgid,command | grep worktrees | grep -v grep
 - **`npm test` 已固定串行**（`--test-concurrency=1`），但两个测试进程/一个正在运行的 Vercio 仍会抢 4100–4999；端口占用失败先查残留。
 - **pnpm/yarn/bun 不能加 `--`**：Vite 的 CAC 解析器会把裸 `--` 之后当位置参数，静默忽略 `--port/--host`；只有 npm 需要分隔符。改 `scriptInvocation` 必须跑 `tests/frameworks.test.js` 与 `tests/preview.test.js`。
 - **失败预览的 error 与日志快照**现在会包含退出时刷出的尾部输出；改 `run()` 的 catch 时保留 `settleWithin`/`failureHint` 行为，否则 UI 只剩“exited”。
+- **「手机打不开」先分层，不要改页面**：本机 `curl` 自己的 LAN IP 走 loopback，通过也不代表其它设备可达。先看启动输出的 `Network` 行（是否 `disabled — bound to ...`）、`LAN client <ip>` 日志（请求有没有到）、以及 `VPN/TUN detected` 提示；地址探测不能把 `169.254/16`、Clash `198.18/15`、Tailscale `100.64/10` 当成 LAN 地址。改监听时同时验证 `curl 127.0.0.1` 与 `curl [::1]`（通配地址是 IPv4+IPv6 双栈）。
 
 ## 7. Do Not
 

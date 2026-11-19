@@ -86,7 +86,7 @@ Code-level documentation for contributors and AI coding agents lives in [docs/](
 3. **Compare** — click **Compare**, choose another branch on the right, and inspect two live frontends side by side.
 4. **Discussion** — open **Discussion** on a preview to leave branch-specific feedback. Everyone on the network sees it instantly.
 5. **Brief and notes** — write the product brief on the Overview tab and keep design reviews, launch checklists and open questions in Notes. Markdown, autosave and tags included.
-6. **Share** — the top-bar Share dialog shows a QR code and LAN URLs; individual `/preview/<deployment-id>/` links can be shared too.
+6. **Share** — the top-bar Share dialog shows a QR code and LAN URLs. **Share preview** under a branch produces a LAN link that opens straight to that branch (the preview keeps streaming while it runs on this machine); individual `/preview/<deployment-id>/` links can be shared too.
 
 ## Supported frameworks
 

@@ -75,13 +75,17 @@ Vercio 是一个**本地优先**的前端分支预览与协作工具：把 Git �
 
 | 端口 | 用途 | 绑定 | 谁决定 |
 | --- | --- | --- | --- |
-| `VERCIO_PORT` / `PORT`（默认 4000） | 主服务：UI、API、SSE、预览重定向 | `0.0.0.0` | 配置/CLI |
+| `VERCIO_PORT` / `PORT`（默认 4000） | 主服务：UI、API、SSE、预览重定向 | 通配地址，IPv4 + IPv6 双栈 | 配置/CLI |
 | `4100–4999` | 每个就绪预览的 dev server 或 static server | `0.0.0.0` | `ports.findFreePort()` |
 | 5173（仅开发） | Vite 前端 | Vite 默认 localhost | `vite.config.ts` |
 
 预览端口由模块级 `reserved` 集合 + 数据库里 `ready` 部署的端口共同避让；释放发生在 `stop()`、部署失败、以及进程退出时（进程退出由操作系统回收）。**进程被 `SIGKILL` 或断电时，`reserved` 与内存中的子进程表全部丢失，可能留下孤儿 dev server 占着端口。**
 
 局域网可访问性最终取决于**项目自己的 dev server**：Vercio 注入 `HOST=0.0.0.0`/`--host 0.0.0.0`，但自定义 server 若忽略它、仍绑 `127.0.0.1`，局域网设备重定向到 `LAN IP:41xx` 会连不上。静态预览由 Vercio 自己的服务器绑定 `0.0.0.0`，不受此影响。
+
+主服务在 `config.host` 为通配地址（`0.0.0.0`/`::`）时用 `listen("::", { ipv6Only: false })` 双栈监听，并对 IPv4 回落做自检；绑定到具体地址/loopback 时只监听该地址。`getLanAddresses()` 会过滤掉 loopback、`169.254/16`、Clash fake-IP（`198.18/15`）和 Tailscale CGNAT（`100.64/10`），并按「私有网段 → 物理网卡」排序，避免把不可达地址印进二维码/分享链接。
+
+启动时会打印每个可达的 `Network` 地址；检测到带 IPv4 的 TUN/VPN 时会额外提示——这类系统级代理（`auto-route` + `strict-route`）可能让「其它设备 → 本机」的请求直接超时，而本机访问自己的 LAN IP 仍然正常。服务端还会为每个首次出现的非 loopback 客户端打印一行 `LAN client <ip>`：有这行说明请求已到达，没有则是网络层拦截（见 [development.md §12](development.md#12-局域网打不开的分层排查)）。
 
 ## 4. 进程内组合
 

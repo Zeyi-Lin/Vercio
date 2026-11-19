@@ -792,7 +792,12 @@ export function ProjectPreviews({
                 {primaryDeployment.id}
               </span>
             )}
-            <button className="link-button" onClick={() => openModal("share")}>
+            <button
+              className="link-button"
+              onClick={() =>
+                openModal("share", selected ? { projectId: project.id, branch: selected } : undefined)
+              }
+            >
               {t("preview.share")}
             </button>
           </div>

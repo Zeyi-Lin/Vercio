@@ -60,7 +60,8 @@ npm run build
 | --- | --- | --- | --- |
 | 新增/修改 API | `server/routes.js` | `web/src/lib/api.ts`、`types.ts`、`docs/api.md`、`tests/api.test.js` | curl + 测试 |
 | 新增项目字段 | `server/lib/projects.js`（create/update/toPublic） | `web/src/lib/types.ts`、UI、`docs/data-model.md` | 创建/读取/旧数据 |
-| 新增部署字段 | `server/lib/deployments.js`（create/run/toPublic） | `types.ts`、UI、`docs/data-model.md` | 部署全流程 |
+| 新增部署字段 | `server/lib/deployments.js`（create/run/follower/toPublic） | `types.ts`、UI、`docs/data-model.md` | 部署全流程 |
+| 改实时预览/编辑源 | `server/lib/sources.js`、`deployments.js` 的 follower、`live-sync.js` | `routes.js`（sources/follow）、`BranchPanel.tsx`/`ProjectPreviews.tsx`、`dictionary.ts`、`api.md`、`architecture.md` §8.8、`tests/preview.test.js` | 多 worktree 同时预览 + 断源 |
 | 新增部署状态 | `deployments.js` + `routes.js`（状态页） | `types.ts`、`ui.tsx`、`format.ts`、`dictionary.ts`、CSS、`PreviewPane.tsx`、测试、三份文档 | 状态迁移 + 停止/失败 |
 | 新增框架 | `server/lib/frameworks.js` | `devCommand`、测试 fixture、`architecture.md` 命令矩阵 | 真启动一个 fixture |
 | 新增包管理器 | `frameworks.js` 的 `PM_FILES`/`INSTALL_COMMANDS` | 指纹、安装命令、测试 | 安装/复用 |
@@ -387,8 +388,9 @@ ps -axo pid,pgid,command | grep worktrees | grep -v grep
 | 15 | 磁盘越来越大 | 日志不轮转、删除项目不删日志、deps 累计 | 清理 `.vercio/logs`、`deps`；不要假设自动回收 |
 | 16 | 预览 ready 但页面白屏/控制台 `Missing VITE_*` | worktree 没有工作副本里被 gitignore 的 `.env*` | 自动复制已实现；确认 `.env*` 在**仓库根目录**，看日志 `Copied local env files`。子目录/自定义 envDir 不在覆盖范围 |
 | 17 | Vite 预览中依赖包字体/图片 `@fs/...` 403 | 软链 node_modules 真实路径超出 Vite fs.allow | 纯 `vite` 脚本自动套 overlay 并带回退；`remix vite:dev`/`astro dev` 等不会套，需要在项目 config 里处理 |
-| 18 | 本地改代码预览不更新 | live preview 只对**工作副本当前 checked-out 分支**生效；切换到别的分支后旧 live 预览会 stop | 用 `git branch --show-current` 核对；预览分支≠当前分支时只能看到提交快照，切回并重新点分支即可 |
+| 18 | 本地改代码预览不更新 | 该分支没有任何 worktree 检出（`liveState=snapshot`），或编辑源与预期目录不是同一个（`/sources` 可见）；依赖文件变化触发的重启窗口内也可能短暂 502 | 看工具栏是 `LIVE` 还是 `快照`；`GET /api/projects/:id/sources` 核对绑定；给分支建 worktree 后 2s 内会自动绑定 |
 | 19 | 预览反复自动刷新 | live sync 重复写相同内容触发 HMR | 已按内容哈希去重；改 `syncWorkingCopyState` 时不要无条件 `copyFile` |
+| 20 | 切分支/删 worktree 后预览停了 | 旧行为；现在应该只降级 `detached` | 检查 `stopFollower`/`refreshFollow` 是否在源缺失分支里误调了 `stop` |
 
 补充：
 
@@ -447,6 +449,7 @@ ps -axo pid,pgid,command | grep worktrees | grep -v grep
 | 页面/组件/路由/数据流/i18n/主题/CSS | `frontend.md` |
 | 命令/测试/调试/约定/故障 | `development.md` |
 | 改动地图/配方/坑/验证 | `ai-coding.md` |
+| 实时预览模型/阶段/取舍 | `live-preview-sources.md`、`architecture.md` §8.8、`backend.md`、`frontend.md` |
 | 面向用户的功能/环境/限制 | 根 `README.md` 与 `README.en.md` |
 
 ## 10. 常用检索

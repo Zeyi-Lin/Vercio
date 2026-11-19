@@ -7,9 +7,12 @@ import { HttpError, serveStaticDir } from "./http.js";
 import { newId } from "./ids.js";
 import {
   addWorktree,
+  checkoutWorktree,
   commitMeta,
   currentBranch,
+  diffNames,
   resolveBranch,
+  resolveBranchTip,
   removeWorktree,
 } from "./git.js";
 import {
@@ -25,7 +28,13 @@ import {
   supportsViteConfigOverlay,
   writeViteConfigOverlay,
 } from "./vite-overlay.js";
-import { shouldIgnoreWatchPath, syncWorkingCopyState } from "./live-sync.js";
+import {
+  createSyncState,
+  resetSyncState,
+  shouldIgnoreWatchPath,
+  syncWorkingCopyState,
+} from "./live-sync.js";
+import { listSources, sourceForBranch, toPublicSource } from "./sources.js";
 
 const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 const MAX_LOG_LINES = 4000;
@@ -37,6 +46,17 @@ const MAX_LOG_LINES = 4000;
 const ENV_FILE_RE = /^\.env(?:\.[A-Za-z0-9_-]+)*$/;
 const ENV_FILE_SKIP_RE = /\.(?:example|sample|template|schema)$/i;
 const MAX_ENV_FILE_BYTES = 512 * 1024;
+const FOLLOWABLE_STATUSES = new Set(["preparing", "installing", "starting", "ready"]);
+// Files whose change means the installed dependencies no longer match the tree.
+const DEPENDENCY_FILES = new Set([
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+]);
+const BUSY_STATUSES = new Set(["queued", "preparing", "installing", "starting", "ready"]);
 const ERROR_HINT_RE =
   /(error|failed|failure|fatal|exception|eaddrinuse|eacces|econnrefused|already in use|not found|cannot|can't|unable|denied|missing|invalid)/i;
 
@@ -76,7 +96,9 @@ export class DeploymentManager {
     this.logs = new Map();
     this.runners = new Map();
     this.stopping = new Set();
-    this.liveWatchers = new Map();
+    this.followers = new Map();
+    this.sourceCache = new Map();
+    this.restartingDeployments = new Set();
     this.recoverInterrupted();
   }
 
@@ -88,11 +110,13 @@ export class DeploymentManager {
         deployment.status = "error";
         deployment.error = "Preview was interrupted by a server restart";
         deployment.finishedAt = nowIso();
+        this.clearSourceBinding(deployment);
         changed = true;
       } else if (deployment.status === "ready") {
         deployment.status = "stopped";
         deployment.error = "Server restarted - redeploy to view this branch";
         deployment.stoppedAt = nowIso();
+        this.clearSourceBinding(deployment);
         changed = true;
       }
     }
@@ -138,6 +162,8 @@ export class DeploymentManager {
       stoppedAt: deployment.stoppedAt || null,
       devCommand: deployment.devCommand || null,
       live: Boolean(deployment.live),
+      liveState: deployment.liveState || (deployment.live ? "following" : "snapshot"),
+      sourceKind: deployment.sourceKind || null,
       isProduction: Boolean(deployment.isProduction),
     };
   }
@@ -153,11 +179,15 @@ export class DeploymentManager {
   }
 
   async getBranches(project, gitModule) {
-    const { branches, defaultBranch, currentBranch } = await gitModule.listBranches(project.repoPath);
+    const [{ branches, defaultBranch, currentBranch }, sources] = await Promise.all([
+      gitModule.listBranches(project.repoPath),
+      this.getSources(project).catch(() => []),
+    ]);
     const latest = this.latestByBranch(project.id);
     return {
       defaultBranch,
       currentBranch,
+      sources: sources.map((source) => toPublicSource(source)),
       branches: branches.map((branch) => {
         const deployment = latest.get(branch.name);
         return {
@@ -210,27 +240,25 @@ export class DeploymentManager {
     const refInfo = await resolveBranch(project.repoPath, branch);
     const meta = await commitMeta(project.repoPath, refInfo.sha);
     const state = this.store.get();
-    // The checked-out branch previews the working copy: uncommitted edits are
-    // synced into its worktree so HMR renders them immediately.
-    const checkedOutBranch = await this.refreshCheckedOutBranch(project);
-    const live = Boolean(checkedOutBranch) && checkedOutBranch === branch;
+    // A preview is one per branch: it follows the tip and mirrors the branch's
+    // editing source (the working copy or any worktree that has it checked out).
+    await this.refreshCheckedOutBranch(project);
+    const sources = await this.getSources(project, { force: true }).catch(() => []);
+    const source = sourceForBranch(sources, branch);
 
     const existing = state.deployments.find(
       (deployment) =>
         deployment.projectId === project.id &&
         deployment.branch === branch &&
-        deployment.commit === refInfo.sha &&
         deployment.status === "ready" &&
-        Boolean(deployment.live) === live &&
         (mode === "auto" || deployment.mode === mode)
     );
     if (existing) {
-      if (existing.mode === "static") {
-        this.requestLiveSync(existing.id);
-        return { deployment: this.toPublic(existing), reused: true };
-      }
-      if (await isPortResponding(existing.port)) {
-        this.requestLiveSync(existing.id);
+      const usable = existing.mode === "static" || (await isPortResponding(existing.port));
+      if (usable) {
+        const controller = this.followers.get(existing.id);
+        if (controller) await this.runFollow(controller, { forceSource: true });
+        else this.requestFollow(existing.id);
         return { deployment: this.toPublic(existing), reused: true };
       }
       existing.status = "stopped";
@@ -260,7 +288,11 @@ export class DeploymentManager {
       readyAt: null,
       stoppedAt: null,
       lastViewedAt: nowIso(),
-      live,
+      sourcePath: source ? source.path : null,
+      sourceKind: source ? source.kind : null,
+      followSource: true,
+      live: Boolean(source),
+      liveState: source ? "following" : "snapshot",
     };
     state.deployments.unshift(deployment);
     this.pruneHistory(project.id);
@@ -346,6 +378,7 @@ export class DeploymentManager {
 
   fail(deployment, message) {
     const cleaned = safeText(message).trim().slice(0, 2000);
+    this.clearSourceBinding(deployment);
     deployment.status = "error";
     deployment.error = cleaned || "Preview failed";
     deployment.finishedAt = nowIso();
@@ -354,10 +387,13 @@ export class DeploymentManager {
     this.emitDeployment(deployment);
   }
 
-  async copyLocalEnvFiles(deployment, project, worktreePath) {
+  async copyLocalEnvFiles(deployment, project, worktreePath, sourcePath) {
+    // The branch may be checked out in another worktree with its own local env
+    // files; fall back to the main working copy (historical behaviour).
+    const envRoot = sourcePath || project.repoPath;
     let entries = [];
     try {
-      entries = await fs.promises.readdir(project.repoPath);
+      entries = await fs.promises.readdir(envRoot);
     } catch {
       return;
     }
@@ -365,7 +401,7 @@ export class DeploymentManager {
     for (const name of entries) {
       if (!name.startsWith(".env")) continue;
       if (!ENV_FILE_RE.test(name) || ENV_FILE_SKIP_RE.test(name)) continue;
-      const source = path.join(project.repoPath, name);
+      const source = path.join(envRoot, name);
       const target = path.join(worktreePath, name);
       try {
         const info = await fs.promises.stat(source);
@@ -389,10 +425,24 @@ export class DeploymentManager {
     } catch {
       return;
     }
+    const protectedPaths = new Set(
+      this.store
+        .get()
+        .deployments.filter(
+          (deployment) =>
+            deployment.worktreePath &&
+            (BUSY_STATUSES.has(deployment.status) || this.followers.has(deployment.id))
+        )
+        .map((deployment) => path.resolve(deployment.worktreePath))
+    );
     for (const entry of entries) {
       if (!entry.startsWith(branchSlug + "-")) continue;
       const target = path.join(dir, entry);
-      if (keepPath && path.resolve(target) === path.resolve(keepPath)) continue;
+      const resolved = path.resolve(target);
+      if (keepPath && resolved === path.resolve(keepPath)) continue;
+      // A preview may still be serving this directory (a newer commit deployed
+      // for the same branch): removing it would leave a zombie preview.
+      if (protectedPaths.has(resolved)) continue;
       await removeWorktree(project.repoPath, target);
     }
   }
@@ -486,149 +536,376 @@ export class DeploymentManager {
     return branch;
   }
 
-  requestLiveSync(deploymentId) {
-    const controller = this.liveWatchers.get(deploymentId);
+  requestFollow(deploymentId) {
+    const controller = this.followers.get(deploymentId);
     if (!controller) return;
-    this.scheduleLiveSync(controller);
+    this.scheduleFollow(controller);
   }
 
-  async initLiveSync(deployment, project, worktreePath) {
+  /**
+   * Cached `git worktree list` for a project. Previews poll it to discover a
+   * newly created editing worktree; the TTL keeps that cheap when several
+   * previews of the same project run side by side.
+   */
+  async getSources(project, { force = false } = {}) {
+    const cached = this.sourceCache.get(project.id);
+    const now = Date.now();
+    if (!force && cached && now - cached.at < 1200) return cached.sources;
+    const sources = await listSources(project, this.config).catch(() => []);
+    this.sourceCache.set(project.id, { at: now, sources });
+    return sources;
+  }
+
+  applySource(deployment, source, { lost = false } = {}) {
+    deployment.sourcePath = source ? source.path : null;
+    deployment.sourceKind = source ? source.kind : null;
+    deployment.live = Boolean(source);
+    deployment.liveState = source ? "following" : lost ? "detached" : "snapshot";
+  }
+
+  /** A terminal deployment cannot be following anything anymore. */
+  clearSourceBinding(deployment) {
+    deployment.sourcePath = null;
+    deployment.sourceKind = null;
+    deployment.live = false;
+    deployment.liveState = "snapshot";
+  }
+
+  sourceLabel(source) {
+    return source.kind === "working-copy" ? "working copy" : "git worktree";
+  }
+
+  /**
+   * Every running preview gets a follower: it fast-forwards the preview worktree
+   * to the branch tip and mirrors the uncommitted state of whichever worktree
+   * currently has that branch checked out (the developer's main copy or a
+   * parallel agent's worktree). A preview never stops because its source moved.
+   */
+  async startFollower(deployment, project, worktreePath) {
+    this.stopFollower(deployment.id);
     const controller = {
       deploymentId: deployment.id,
       repoPath: project.repoPath,
       worktreePath,
       branch: deployment.branch,
-      state: { syncedPaths: new Set(), fileHashes: new Map(), envHashes: new Map() },
+      state: createSyncState(),
+      source: null,
+      bound: false,
+      watcher: null,
+      watcherPath: null,
       debounceTimer: null,
       interval: null,
-      watcher: null,
       busy: false,
       pending: false,
-      branchWarned: false,
       lastLogAt: 0,
+      lastSourceScan: 0,
+      lastTipLogAt: 0,
+      lostWarned: false,
+      restarting: false,
+      restartPending: false,
     };
-    this.liveWatchers.set(deployment.id, controller);
-    this.log(
-      deployment,
-      "Live preview: following the working copy of " + deployment.branch +
-        " (uncommitted edits are synced automatically)"
-    );
-    await this.syncLiveWorkingCopy(controller, deployment, true);
-    if (!deployment.live) {
-      this.stopLiveSync(deployment.id);
-      return;
+    this.followers.set(deployment.id, controller);
+    await this.refreshFollow(controller, deployment, project, {
+      initial: true,
+      forceSource: true,
+    });
+    if (!this.followers.has(deployment.id)) return;
+    if (!controller.source) {
+      this.log(
+        deployment,
+        "Preview follows " + deployment.branch +
+          " commits only (no worktree has it checked out yet; create one to see live edits)"
+      );
     }
-    this.startLiveWatcher(controller);
+    this.startFollowLoop(controller);
   }
 
-  startLiveWatcher(controller) {
-    const trigger = () => this.scheduleLiveSync(controller);
-    try {
-      controller.watcher = fs.watch(controller.repoPath, { recursive: true }, (_event, filename) => {
-        if (shouldIgnoreWatchPath(filename)) return;
-        trigger();
-      });
-      controller.watcher.on?.("error", () => {});
-    } catch {
-      controller.watcher = null;
-    }
-    // fs.watch is not recursive on Linux; the interval also covers editors that
-    // write through temp files or events dropped by the OS watcher.
-    controller.interval = setInterval(trigger, 2000);
+  startFollowLoop(controller) {
+    this.ensureWatch(controller);
+    // fs.watch is not recursive on Linux and editors can write through temp
+    // files, so the interval is both the tip poll and the fallback sync.
+    controller.interval = setInterval(() => this.scheduleFollow(controller), 2000);
     controller.interval.unref?.();
   }
 
-  scheduleLiveSync(controller) {
+  ensureWatch(controller) {
+    const target = controller.source?.path || null;
+    if (controller.watcherPath === target) return;
+    try {
+      controller.watcher?.close();
+    } catch {}
+    controller.watcher = null;
+    controller.watcherPath = null;
+    if (!target) return;
+    try {
+      controller.watcher = fs.watch(target, { recursive: true }, (_event, filename) => {
+        if (shouldIgnoreWatchPath(filename)) return;
+        this.scheduleFollow(controller);
+      });
+      controller.watcher.on?.("error", () => {});
+      controller.watcherPath = target;
+    } catch {}
+  }
+
+  scheduleFollow(controller) {
     if (controller.debounceTimer) return;
     controller.debounceTimer = setTimeout(() => {
       controller.debounceTimer = null;
-      this.runLiveSync(controller).catch(() => {});
+      this.runFollow(controller).catch(() => {});
     }, 120);
     controller.debounceTimer.unref?.();
   }
 
-  async runLiveSync(controller) {
+  async runFollow(controller, options = {}) {
+    if (controller.restarting) return;
     if (controller.busy) {
       controller.pending = true;
       return;
     }
     controller.busy = true;
     try {
-      const deployment = this.store
-        .get()
-        .deployments.find((item) => item.id === controller.deploymentId);
-      if (
-        !deployment ||
-        !["preparing", "installing", "starting", "ready"].includes(deployment.status)
-      ) {
-        this.stopLiveSync(controller.deploymentId);
+      const state = this.store.get();
+      const deployment = state.deployments.find((item) => item.id === controller.deploymentId);
+      const project = deployment
+        ? state.projects.find((item) => item.id === deployment.projectId)
+        : null;
+      if (!deployment || !project || !FOLLOWABLE_STATUSES.has(deployment.status)) {
+        this.stopFollower(controller.deploymentId);
         return;
       }
-      await this.syncLiveWorkingCopy(controller, deployment, false);
+      await this.refreshFollow(controller, deployment, project, options);
     } finally {
       controller.busy = false;
       if (controller.pending) {
         controller.pending = false;
-        this.scheduleLiveSync(controller);
+        this.scheduleFollow(controller);
       }
     }
   }
 
-  async syncLiveWorkingCopy(controller, deployment, initial) {
-    const branch = await currentBranch(controller.repoPath).catch(() => "");
-    if (!branch || branch !== controller.branch) {
-      const current = branch || "a detached HEAD";
-      if (initial) {
-        deployment.live = false;
+  async refreshFollow(controller, deployment, project, options = {}) {
+    const now = Date.now();
+    // 1. Follow the branch tip, so new commits show up without a redeploy.
+    const tip = await resolveBranchTip(project.repoPath, deployment.branch).catch(() => null);
+    if (tip && tip !== deployment.commit) {
+      try {
+        const previousCommit = deployment.commit;
+        await checkoutWorktree(controller.worktreePath, tip);
+        resetSyncState(controller.state);
+        const changed = await diffNames(project.repoPath, previousCommit, tip).catch(() => []);
+        if (changed.some((file) => DEPENDENCY_FILES.has(file))) {
+          controller.restartPending = true;
+        }
+        const meta = await commitMeta(project.repoPath, tip).catch(() => null);
+        deployment.commit = tip;
+        deployment.shortSha = tip.slice(0, 7);
+        if (meta) {
+          deployment.commitMessage = meta.message || "";
+          deployment.author = meta.author || "";
+        }
         this.store.markDirty();
-        this.log(
-          deployment,
-          "Live preview disabled: the working copy moved to " + current + " while the preview started"
-        );
-        return;
+        this.emitDeployment(deployment);
+        this.log(deployment, "Following " + deployment.branch + " to " + deployment.shortSha);
+      } catch (error) {
+        if (now - controller.lastTipLogAt > 15000) {
+          controller.lastTipLogAt = now;
+          this.log(
+            deployment,
+            "Could not follow the new commit of " + deployment.branch + ": " +
+              safeText(error.message).slice(0, 240)
+          );
+        }
       }
-      if (!controller.branchWarned) {
-        controller.branchWarned = true;
-        this.stop(deployment, {
-          reason: "working copy switched to " + current,
-          error: "The working copy switched to " + current + ". Redeploy this branch to preview it.",
-        });
+    }
+
+    // 2. Re-bind the editing source. Branches without a worktree stay snapshots,
+    // but still follow their tip; a source that disappears detaches without
+    // killing the preview.
+    if (
+      deployment.followSource !== false &&
+      (options.forceSource || options.initial || !controller.source || now - controller.lastSourceScan > 2000)
+    ) {
+      controller.lastSourceScan = now;
+      const sources = await this.getSources(project);
+      const source = sourceForBranch(sources, deployment.branch);
+      if (source) {
+        if (controller.source?.path !== source.path) {
+          this.log(
+            deployment,
+            (options.initial || !controller.bound ? "Live preview: following the " : "Live edits reattached to the ") +
+              this.sourceLabel(source) + " of " + deployment.branch +
+              (options.initial || !controller.bound ? " (commits + uncommitted edits)" : "")
+          );
+        }
+        controller.source = source;
+        controller.bound = true;
+        controller.lostWarned = false;
+        if (deployment.liveState !== "following" || deployment.sourcePath !== source.path) {
+          this.applySource(deployment, source);
+          this.store.markDirty();
+          this.emitDeployment(deployment);
+        }
+      } else {
+        const hadSource = Boolean(controller.bound || deployment.sourcePath);
+        controller.source = null;
+        if (hadSource) {
+          this.applySource(deployment, null, { lost: true });
+          this.store.markDirty();
+          this.emitDeployment(deployment);
+          controller.bound = false;
+          if (!controller.lostWarned) {
+            controller.lostWarned = true;
+            this.log(
+              deployment,
+              "Live edits detached: no worktree has " + deployment.branch +
+                " checked out anymore. The preview keeps following commits; create a worktree for this branch to resume live edits."
+            );
+          }
+        }
       }
+      this.ensureWatch(controller);
+    }
+
+    // 3. Mirror uncommitted edits from the source into the preview worktree.
+    if (!controller.source) {
+      this.maybeRestart(controller, deployment, project);
       return;
     }
-    controller.branchWarned = false;
     const result = await syncWorkingCopyState({
-      repoDir: controller.repoPath,
+      sourceDir: controller.source.path,
       worktreeDir: controller.worktreePath,
       state: controller.state,
     }).catch(() => ({ ok: false, changed: [], env: [] }));
+    this.maybeRestart(controller, deployment, project);
     if (!result.ok) return;
     const count = result.changed.length + result.env.length;
     if (!count) return;
-    const now = Date.now();
-    if (initial || now - controller.lastLogAt > 1500) {
+    if (options.initial || now - controller.lastLogAt > 1500) {
       controller.lastLogAt = now;
       const sample = result.changed
         .slice(0, 4)
         .map((item) => item.replace(/ \((?:deleted|restored|removed)\)$/, ""));
       this.log(
         deployment,
-        "Live sync: " + count + " working-copy change" + (count === 1 ? "" : "s") +
+        "Live sync: " + count + " change" + (count === 1 ? "" : "s") +
           (sample.length ? " (" + sample.join(", ") + (result.changed.length > 4 ? ", …" : "") + ")" : "")
       );
     }
   }
 
-  stopLiveSync(deploymentId) {
-    const controller = this.liveWatchers.get(deploymentId);
+  maybeRestart(controller, deployment, project) {
+    if (!controller.restartPending) return;
+    if (deployment.mode !== "server") {
+      controller.restartPending = false;
+      return;
+    }
+    // A commit can land while the preview is still installing/starting; keep
+    // the flag so the restart runs as soon as the preview is ready.
+    if (deployment.status !== "ready" || controller.restarting) return;
+    controller.restartPending = false;
+    this.restartPreview(controller, deployment, project).catch((error) => {
+      controller.restarting = false;
+      if (this.stopping.has(deployment.id)) return;
+      this.fail(
+        deployment,
+        "Restart after dependency change failed: " + safeText(error.message).slice(0, 400)
+      );
+      if (deployment.port) {
+        releasePort(deployment.port);
+        deployment.port = null;
+      }
+      this.killChild(deployment.id);
+    });
+  }
+
+  /**
+   * A commit that touches package.json or a lockfile invalidates the shared
+   * node_modules tree. Restart the same preview (same port, same worktree)
+   * after reinstalling instead of making the user redeploy the branch.
+   */
+  async restartPreview(controller, deployment, project) {
+    if (controller.restarting) return;
+    controller.restarting = true;
+    this.restartingDeployments.add(deployment.id);
+    try {
+      const worktreePath = deployment.worktreePath;
+      if (!worktreePath) return;
+      this.log(deployment, "Dependencies changed; restarting the preview in place");
+      const child = this.children.get(deployment.id);
+      this.killChild(deployment.id);
+      if (child) {
+        await settleWithin(new Promise((resolve) => child.once("close", resolve)), 3000);
+      }
+      this.children.delete(deployment.id);
+      if (deployment.status !== "ready" || this.stopping.has(deployment.id)) return;
+
+      this.setStatus(deployment, "installing");
+      const detection = detectProject(worktreePath);
+      deployment.framework = {
+        label: detection.label,
+        type: detection.type,
+        kind: detection.kind,
+        packageManager: detection.packageManager,
+      };
+      // Drop the linked/cached tree so installDependencies re-plans against the
+      // new lockfile; the shared cache itself is never modified.
+      try {
+        fs.rmSync(path.join(worktreePath, "node_modules"), { recursive: true, force: true });
+      } catch {}
+      await this.installDependencies(deployment, project, worktreePath, detection);
+      if (deployment.status === "error" || this.stopping.has(deployment.id)) return;
+
+      const port = deployment.port || (await findFreePort(this.config.previewPortRange, this.activePorts()));
+      deployment.port = port;
+      const command = devCommand(detection, port, worktreePath);
+      this.setStatus(deployment, "starting");
+      const attempts = this.devServerAttempts(deployment, detection, worktreePath, command);
+      let child2 = null;
+      for (let index = 0; index < attempts.length; index += 1) {
+        const attempt = attempts[index];
+        deployment.devCommand = [attempt.command, ...attempt.args].join(" ");
+        this.log(
+          deployment,
+          "$ " + deployment.devCommand + "  (port " + port + ")" + (index > 0 ? "  (fallback)" : "")
+        );
+        try {
+          child2 = await this.startDevServerChild(deployment, worktreePath, attempt, port);
+          break;
+        } catch (error) {
+          if (index === attempts.length - 1) throw error;
+          this.log(
+            deployment,
+            "Vite config overlay failed; retrying with the project's dev command: " +
+              safeText(error.message).slice(0, 240)
+          );
+        }
+      }
+      if (!child2) throw new Error("Could not restart the dev server");
+      if (deployment.status === "error" || deployment.status === "stopped") return;
+      deployment.status = "ready";
+      deployment.readyAt = nowIso();
+      deployment.error = null;
+      this.log(deployment, "Preview restarted on port " + port);
+      this.store.markDirty();
+      this.emitDeployment(deployment);
+    } finally {
+      controller.restarting = false;
+      this.restartingDeployments.delete(deployment.id);
+    }
+  }
+
+  stopFollower(deploymentId) {
+    const controller = this.followers.get(deploymentId);
     if (!controller) return;
-    this.liveWatchers.delete(deploymentId);
+    this.followers.delete(deploymentId);
     if (controller.debounceTimer) clearTimeout(controller.debounceTimer);
     if (controller.interval) clearInterval(controller.interval);
     try {
       controller.watcher?.close();
     } catch {}
     controller.watcher = null;
+    controller.watcherPath = null;
+    controller.source = null;
   }
 
   devServerAttempts(deployment, detection, worktreePath, command) {
@@ -678,7 +955,7 @@ export class DeploymentManager {
     });
     child.on("exit", (code, signal) => {
       if (this.children.get(deployment.id) === child) this.children.delete(deployment.id);
-      if (this.stopping.has(deployment.id)) return;
+      if (this.stopping.has(deployment.id) || this.restartingDeployments.has(deployment.id)) return;
       if (deployment.status === "ready") {
         deployment.status = "stopped";
         deployment.stoppedAt = nowIso();
@@ -733,8 +1010,9 @@ export class DeploymentManager {
       const refInfo = await resolveBranch(project.repoPath, deployment.branch);
       deployment.commit = refInfo.sha;
       deployment.shortSha = refInfo.sha.slice(0, 7);
-      const checkedOutBranch = await this.refreshCheckedOutBranch(project);
-      deployment.live = Boolean(checkedOutBranch) && checkedOutBranch === deployment.branch;
+      await this.refreshCheckedOutBranch(project);
+      const sources = await this.getSources(project, { force: true }).catch(() => []);
+      this.applySource(deployment, sourceForBranch(sources, deployment.branch));
       const branchSlug = slugify(deployment.branch);
       const worktreeRoot = path.join(this.config.dirs.worktrees, project.id);
       const worktreePath = path.join(worktreeRoot, branchSlug + "-" + deployment.commit.slice(0, 8));
@@ -744,8 +1022,8 @@ export class DeploymentManager {
       this.log(deployment, "Creating isolated worktree for " + deployment.branch + " @ " + deployment.shortSha);
       await this.cleanupBranchWorktrees(project, branchSlug, worktreePath);
       await addWorktree(project.repoPath, deployment.commit, worktreePath);
-      await this.copyLocalEnvFiles(deployment, project, worktreePath);
-      if (deployment.live) await this.initLiveSync(deployment, project, worktreePath);
+      await this.copyLocalEnvFiles(deployment, project, worktreePath, deployment.sourcePath);
+      await this.startFollower(deployment, project, worktreePath);
 
       const detection = detectProject(worktreePath);
       deployment.framework = {
@@ -823,7 +1101,7 @@ export class DeploymentManager {
       this.afterReady(project, deployment);
     } catch (error) {
       if (this.stopping.has(deployment.id) && deployment.status === "stopped") return;
-      this.stopLiveSync(deployment.id);
+      this.stopFollower(deployment.id);
       // Wait for the dev server to finish dying so its remaining stdio is in
       // the log before we snapshot the failure (the UI renders that snapshot).
       if (child) {
@@ -846,7 +1124,7 @@ export class DeploymentManager {
 
   afterReady(project, deployment) {
     this.emitDeployment(deployment);
-    this.requestLiveSync(deployment.id);
+    this.requestFollow(deployment.id);
     const others = this.store.get().deployments.filter(
       (item) =>
         item.projectId === project.id &&
@@ -893,7 +1171,7 @@ export class DeploymentManager {
     if (!deployment) return;
     if (!["ready", "starting", "installing", "queued", "preparing"].includes(deployment.status)) return;
     this.stopping.add(deployment.id);
-    this.stopLiveSync(deployment.id);
+    this.stopFollower(deployment.id);
     const staticServer = this.staticServers.get(deployment.id);
     if (staticServer) {
       this.staticServers.delete(deployment.id);
@@ -902,6 +1180,7 @@ export class DeploymentManager {
     this.killChild(deployment.id);
     this.children.delete(deployment.id);
     const previousStatus = deployment.status;
+    this.clearSourceBinding(deployment);
     deployment.status = "stopped";
     deployment.stoppedAt = nowIso();
     if (previousStatus === "ready") deployment.error = null;
@@ -911,6 +1190,49 @@ export class DeploymentManager {
     this.store.markDirty();
     this.emitDeployment(deployment);
     setTimeout(() => this.stopping.delete(deployment.id), 6000).unref?.();
+  }
+
+  /**
+   * Re-binds the branch's editing source on demand (the banner's "reattach"
+   * action). Keeps the same preview and port; only the live overlay resumes.
+   */
+  async followById(id) {
+    const deployment = this.getDeployment(id);
+    if (!BUSY_STATUSES.has(deployment.status)) {
+      throw new HttpError(409, "Preview is not running");
+    }
+    const project = this.store.get().projects.find((item) => item.id === deployment.projectId);
+    if (!project) throw new HttpError(404, "Project not found");
+    deployment.followSource = true;
+    const controller = this.followers.get(id);
+    if (controller) {
+      await this.runFollow(controller, { forceSource: true });
+    } else if (deployment.worktreePath) {
+      await this.startFollower(deployment, project, deployment.worktreePath);
+    }
+    this.store.markDirty();
+    this.emitDeployment(deployment);
+    return this.toPublic(deployment);
+  }
+
+  /** Stops mirroring uncommitted edits but keeps following the branch tip. */
+  unfollowById(id) {
+    const deployment = this.getDeployment(id);
+    deployment.followSource = false;
+    this.applySource(deployment, null);
+    const controller = this.followers.get(id);
+    if (controller) {
+      controller.source = null;
+      controller.bound = false;
+      try {
+        controller.watcher?.close();
+      } catch {}
+      controller.watcher = null;
+      controller.watcherPath = null;
+    }
+    this.store.markDirty();
+    this.emitDeployment(deployment);
+    return this.toPublic(deployment);
   }
 
   stopById(id) {
@@ -933,6 +1255,9 @@ export class DeploymentManager {
   async removeProject(project) {
     this.stopProject(project.id);
     for (const deployment of this.store.get().deployments.filter((item) => item.projectId === project.id)) {
+      this.stopFollower(deployment.id);
+    }
+    for (const deployment of this.store.get().deployments.filter((item) => item.projectId === project.id)) {
       const server = this.staticServers.get(deployment.id);
       if (server) {
         this.staticServers.delete(deployment.id);
@@ -945,6 +1270,7 @@ export class DeploymentManager {
         await removeWorktree(project.repoPath, deployment.worktreePath).catch(() => {});
       }
     }
+    this.sourceCache.delete(project.id);
     try {
       await fs.promises.rm(path.join(this.config.dirs.worktrees, project.id), { recursive: true, force: true });
     } catch {}
@@ -975,7 +1301,7 @@ export class DeploymentManager {
       try { server.close(); } catch {}
       this.staticServers.delete(id);
     }
-    for (const id of [...this.liveWatchers.keys()]) this.stopLiveSync(id);
+    for (const id of [...this.followers.keys()]) this.stopFollower(id);
     this.store.flush();
   }
 }

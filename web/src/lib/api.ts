@@ -1,6 +1,7 @@
 import type {
   BranchChanges,
   BranchList,
+  BranchSource,
   BrowseListing,
   Comment,
   Deployment,
@@ -132,6 +133,23 @@ export const api = {
     return request<{ deployment: Deployment; reused: boolean }>(
       "/api/projects/" + encodeURIComponent(id) + "/deployments",
       { method: "POST", body: JSON.stringify({ branch, mode }) }
+    );
+  },
+  async sources(id: string) {
+    return request<{ sources: BranchSource[] }>(
+      "/api/projects/" + encodeURIComponent(id) + "/sources"
+    );
+  },
+  async followDeployment(id: string) {
+    return request<{ deployment: Deployment }>(
+      "/api/deployments/" + encodeURIComponent(id) + "/follow",
+      { method: "POST" }
+    );
+  },
+  async unfollowDeployment(id: string) {
+    return request<{ deployment: Deployment }>(
+      "/api/deployments/" + encodeURIComponent(id) + "/follow",
+      { method: "DELETE" }
     );
   },
   async deployment(id: string) {

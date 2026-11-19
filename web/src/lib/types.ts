@@ -9,6 +9,10 @@ export type DeploymentStatus =
 
 export type PreviewMode = "auto" | "server" | "static";
 
+export type LiveState = "following" | "snapshot" | "detached";
+
+export type SourceKind = "working-copy" | "worktree";
+
 export interface FrameworkInfo {
   label: string;
   type: "server" | "static";
@@ -36,6 +40,8 @@ export interface Deployment {
   stoppedAt: string | null;
   devCommand: string | null;
   live?: boolean;
+  liveState?: LiveState;
+  sourceKind?: SourceKind | null;
   isProduction: boolean;
   projectName?: string;
 }
@@ -192,11 +198,21 @@ export interface ProjectDetail {
   commentsCount: number;
 }
 
+export interface BranchSource {
+  kind: SourceKind;
+  branch: string | null;
+  head: string;
+  shortSha: string;
+  main: boolean;
+  detached: boolean;
+}
+
 export interface BranchList {
   projectId: string;
   defaultBranch: string;
   currentBranch: string;
   branches: Branch[];
+  sources: BranchSource[];
 }
 
 export interface Readme {

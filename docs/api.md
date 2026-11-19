@@ -91,7 +91,11 @@
   readyAt: string | null;
   stoppedAt: string | null;
   devCommand: string | null;                // 实际执行的命令（含参数）
-  live: boolean;                            // true = 分支即工作副本当前分支，预览实时同步未提交改动
+  live: boolean;                            // true = liveState === "following"（兼容字段）
+  liveState: "following" | "snapshot" | "detached";
+                                            // following = 绑定到编辑源；snapshot = 无 worktree 检出；
+                                            // detached = 之前绑定过、源已消失（预览仍继续跟随 tip）
+  sourceKind: "working-copy" | "worktree" | null;  // 源的种类，不暴露路径
   isProduction: boolean;                    // 当前恒为 false（未实现）
   projectName?: string;                     // 仅 /api/overview 注入
 }
@@ -190,13 +194,16 @@ SystemInfo = {
 | DELETE | `/api/projects/:id` | 删除项目 | 200 |
 | POST | `/api/projects/:id/refresh` | git fetch + 刷新元数据 | 200 |
 | POST | `/api/projects/:id/retry` | 重试失败的导入 | 202 |
-| GET | `/api/projects/:id/branches` | 分支列表 + 每分支最新部署 | 200 |
+| GET | `/api/projects/:id/branches` | 分支列表 + 每分支最新部署 + 编辑源 | 200 |
+| GET | `/api/projects/:id/sources` | 编辑源列表（无路径） | 200 |
 | GET | `/api/projects/:id/readme` | production 分支 README | 200 |
 | GET | `/api/projects/:id/changes` | 相对 production 的 diff | 200 |
 | GET | `/api/projects/:id/deployments` | 项目部署历史 | 200 |
 | POST | `/api/projects/:id/deployments` | 创建预览 | 200（复用）/202（新建） |
 | GET | `/api/deployments/:id` | 单个部署 | 200 |
 | GET | `/api/deployments/:id/logs` | 部署日志 | 200 |
+| POST | `/api/deployments/:id/follow` | 重新绑定编辑源并立即同步 | 200 |
+| DELETE | `/api/deployments/:id/follow` | 断开未提交改动镜像（继续跟随 tip） | 200 |
 | POST | `/api/deployments/:id/stop` | 停止预览 | 200 |
 | GET | `/api/projects/:id/notes` | 笔记列表 | 200 |
 | POST | `/api/projects/:id/notes` | 新建笔记 | 201 |
@@ -397,13 +404,32 @@ SystemInfo = {
   "projectId": "prj_x",
   "defaultBranch": "main",
   "currentBranch": "main",
-  "branches": ["Branch..."]
+  "branches": ["Branch..."],
+  "sources": [
+    { "kind": "working-copy", "branch": "main", "head": "…", "shortSha": "…", "main": true, "detached": false }
+  ]
 }
 ```
 
 - 项目非 ready → 409。
 - 默认分支排第一，其余按 commit 时间倒序。
 - 每项带该分支**最新一次**部署（可能是 error/stopped）。
+- `sources` 是当前检出各分支的 worktree（`git worktree list --porcelain`），排除 Vercio 自己的预览 worktree；**不含路径**，只给 `kind/branch/head/shortSha/main/detached`。前端用它显示"编辑中"徽标与快照提示。
+
+### `GET /api/projects/:id/sources`
+
+```json
+{
+  "sources": [
+    { "kind": "worktree", "branch": "feat/agent", "head": "40 位 sha", "shortSha": "7 位", "main": false, "detached": false }
+  ]
+}
+```
+
+- 项目非 ready → 409。
+- 来源是 `git worktree list --porcelain`，排除 `.vercio/worktrees` 与 `.vercio/deps` 下的产物。
+- `branch` 可能是 `null`（detached worktree）。
+- 不含文件系统路径（与 `worktreePath` 同属内部字段）。
 
 ### `GET /api/projects/:id/readme`
 
@@ -437,7 +463,7 @@ SystemInfo = {
 ```
 
 - `branch` 必填非空字符串；`mode` 可选，默认 `auto`，只接受 `auto|server|static`。
-- 命中可复用部署 → **200** `{ "deployment": ..., "reused": true }`。
+- 同分支已有 `ready` 部署（mode 兼容且端口应答）→ **200** `{ "deployment": ..., "reused": true }`，并立即同步一次编辑源；commit 不要求相同（tip 会自动前滚）。
 - 新建 → **202** `{ "deployment": ..., "reused": false }`，后台执行。
 - 项目非 ready → 409；分支不存在 → 404；非法 mode → 400。
 
@@ -462,6 +488,18 @@ SystemInfo = {
 - 响应 `{ "deployment": Deployment }`（status=`stopped`，port=null）。
 - 会关静态服务器或杀 dev server 进程组、释放端口、写日志、广播。
 - `installing/queued/preparing` 不能通过 API 停止（manager 内部可以）。
+
+### `POST /api/deployments/:id/follow`
+
+- 重新查找该分支的编辑源并立即同步；响应 `{ "deployment": Deployment }`。
+- 仅活动状态（`queued/preparing/installing/starting/ready`）可用；否则 409 `Preview is not running`。
+- 找不到编辑源时不会报错，`liveState` 保持 `snapshot/detached`（前端提示"还没有 worktree 检出这个分支"）。
+- 端口与 deployment id 不变。
+
+### `DELETE /api/deployments/:id/follow`
+
+- 断开未提交改动镜像：`live=false`、`liveState="snapshot"`、`sourceKind=null`，**继续跟随分支 tip**。
+- 之后再 `POST /follow` 可恢复；否则 follower 不会自动重新绑定。
 
 ### `GET /preview/:deploymentId/*`
 

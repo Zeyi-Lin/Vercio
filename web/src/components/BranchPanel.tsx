@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useT } from "../i18n";
 import { relativeTime } from "../lib/format";
-import type { Branch, Deployment } from "../lib/types";
+import type { Branch, BranchSource, Deployment } from "../lib/types";
 import { Skeleton, Spinner } from "./ui";
 
 function branchDeployment(
@@ -21,8 +21,35 @@ function branchDeployment(
   return deployments[branch.name] || branch.deployment || null;
 }
 
+type Translate = ReturnType<typeof useT>;
+
+function deploymentLiveState(deployment: Deployment): "following" | "snapshot" | "detached" {
+  return deployment.liveState || (deployment.live ? "following" : "snapshot");
+}
+
+function deploymentStateClass(deployment: Deployment): string {
+  if (deployment.status !== "ready") return deployment.status;
+  const state = deploymentLiveState(deployment);
+  if (state === "following") return "live";
+  if (state === "detached") return "detached";
+  return "ready";
+}
+
+function deploymentStateLabel(deployment: Deployment, t: Translate): string {
+  if (deployment.status === "ready") {
+    const state = deploymentLiveState(deployment);
+    if (state === "following") return t("preview.stateLive");
+    if (state === "detached") return t("preview.stateDetached");
+    return t("preview.stateReady");
+  }
+  if (deployment.status === "error") return t("preview.stateError");
+  if (deployment.status === "stopped") return t("preview.stateIdle");
+  return t("preview.building");
+}
+
 export function BranchPanel({
   branches,
+  sources = [],
   loading,
   selected,
   deployments,
@@ -38,6 +65,7 @@ export function BranchPanel({
   footerActions,
 }: {
   branches: Branch[];
+  sources?: BranchSource[];
   loading: boolean;
   selected: string;
   deployments: Record<string, Deployment>;
@@ -202,6 +230,7 @@ export function BranchPanel({
         {!loading &&
           visible.map((branch) => {
             const deployment = branchDeployment(branch, deployments);
+            const source = sources.find((item) => item.branch === branch.name) || null;
             const active = branch.name === selected;
             const compared = compare && branch.name === compareBranch;
             return (
@@ -239,15 +268,17 @@ export function BranchPanel({
                   <span>{relativeTime(branch.date)}</span>
                   <span className="branch-item-state">
                     {deployment ? (
-                      <span className={"branch-state branch-state-" + deployment.status}>
+                      <span className={"branch-state branch-state-" + deploymentStateClass(deployment)}>
                         <span className="branch-state-dot" />
-                        {deployment.status === "ready"
-                          ? t("preview.stateReady")
-                          : deployment.status === "error"
-                            ? t("preview.stateError")
-                            : deployment.status === "stopped"
-                              ? t("preview.stateIdle")
-                              : t("preview.building")}
+                        {deploymentStateLabel(deployment, t)}
+                      </span>
+                    ) : source ? (
+                      <span
+                        className="branch-state branch-state-source"
+                        title={t("preview.sourceAvailableHint", { branch: branch.name })}
+                      >
+                        <span className="branch-state-dot" />
+                        {t("preview.stateSource")}
                       </span>
                     ) : (
                       <span className="branch-state branch-state-none">

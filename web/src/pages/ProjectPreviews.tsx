@@ -73,6 +73,7 @@ export function ProjectPreviews({
   const [notes, setNotes] = useState<Note[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pinnedBranch, setPinnedBranch] = useState<string | null>(project.pinnedBranch ?? null);
+  const [reattaching, setReattaching] = useState(false);
   const [focus, setFocus] = useState(false);
   const [branchesCollapsed, setBranchesCollapsed] = useState(() => {
     try {
@@ -327,6 +328,13 @@ export function ProjectPreviews({
 
   const primaryDeployment = deployments[selected] || null;
   const compareDeployment = compareBranch ? deployments[compareBranch] || null : null;
+  const primaryLiveState: "following" | "snapshot" | "detached" =
+    primaryDeployment?.liveState || (primaryDeployment?.live ? "following" : "snapshot");
+  const selectedSource = data?.sources?.find((source) => source.branch === selected) || null;
+  const primarySourceLabel =
+    primaryDeployment?.sourceKind === "working-copy"
+      ? t("preview.sourceWorkingCopy")
+      : t("preview.sourceWorktree");
   const fetchedLogSnapshots = useRef<Record<string, string>>({});
 
   useEffect(() => {
@@ -476,6 +484,28 @@ export function ProjectPreviews({
     }
   };
 
+  const reattachBranch = async (branch: string) => {
+    const deployment = deploymentFor(branch);
+    if (!deployment) return;
+    setReattaching(true);
+    try {
+      const result = await api.followDeployment(deployment.id);
+      setDeployments((current) => ({ ...current, [branch]: result.deployment }));
+      if (result.deployment.liveState === "following") {
+        pushToast(t("preview.reattachOk"), "info");
+      } else {
+        pushToast(t("preview.reattachNoSource"), "info");
+      }
+    } catch (reattachError) {
+      pushToast(
+        reattachError instanceof Error ? reattachError.message : t("preview.reattachError"),
+        "error"
+      );
+    } finally {
+      setReattaching(false);
+    }
+  };
+
   if (error && !data) {
     return (
       <div className="previews previews-fallback">
@@ -547,6 +577,7 @@ export function ProjectPreviews({
     >
       <BranchPanel
         branches={data?.branches || []}
+        sources={data?.sources || []}
         loading={loading}
         selected={selected}
         deployments={deployments}
@@ -631,10 +662,49 @@ export function ProjectPreviews({
               <span className="mono truncate">{selected || t("preview.selectBranch")}</span>
             </span>
             {primaryDeployment && <StatusPill status={primaryDeployment.status} />}
-            {primaryDeployment?.live && primaryDeployment.status === "ready" && (
-              <span className="toolbar-live" title={t("preview.liveHint")}>
+            {primaryDeployment?.status === "ready" && primaryLiveState === "following" && (
+              <span
+                className="toolbar-live"
+                title={t("preview.liveHint", {
+                  source: primarySourceLabel,
+                  branch: selected,
+                })}
+              >
                 <span className="live-dot" />
                 {t("preview.live")}
+              </span>
+            )}
+            {primaryDeployment?.status === "ready" &&
+              primaryLiveState === "following" &&
+              primaryDeployment.sourceKind && (
+                <span className="toolbar-mode">{primarySourceLabel}</span>
+              )}
+            {primaryDeployment?.status === "ready" && primaryLiveState === "snapshot" && (
+              <span
+                className="toolbar-snapshot"
+                title={t("preview.snapshotHint", {
+                  branch: selected,
+                  sha: primaryDeployment.shortSha,
+                })}
+              >
+                {t("preview.snapshot")} · {primaryDeployment.shortSha}
+              </span>
+            )}
+            {primaryDeployment?.status === "ready" && primaryLiveState === "detached" && (
+              <span
+                className="toolbar-live is-paused"
+                title={t("preview.detachedHint", { branch: selected })}
+              >
+                <span className="live-dot" />
+                {t("preview.detached")}
+              </span>
+            )}
+            {!primaryDeployment && selectedSource && (
+              <span
+                className="toolbar-snapshot"
+                title={t("preview.sourceAvailableHint", { branch: selected })}
+              >
+                {t("preview.sourceAvailable")}
               </span>
             )}
             {primaryDeployment?.mode && (
@@ -683,6 +753,24 @@ export function ProjectPreviews({
             </Button>
           </div>
         </div>
+
+        {primaryDeployment?.status === "ready" && primaryLiveState === "detached" && (
+          <div className="preview-live-banner">
+            <AlertCircle size={14} className="preview-live-banner-icon" />
+            <div className="preview-live-banner-text">
+              <strong>{t("preview.detached")}</strong>
+              <span>{t("preview.detachedHint", { branch: selected })}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={reattaching}
+              onClick={() => reattachBranch(selected)}
+            >
+              {reattaching ? t("preview.reattaching") : t("preview.reattach")}
+            </Button>
+          </div>
+        )}
 
         <div className={"preview-panes" + (compare ? " preview-panes-compare" : "")}>
           {selected ? (

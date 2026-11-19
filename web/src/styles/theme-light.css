@@ -216,8 +216,12 @@
 [data-theme="light"] .status-idle {
   color: var(--text-faint);
 }
-[data-theme="light"] .branch-state-ready {
+[data-theme="light"] .branch-state-ready,
+[data-theme="light"] .branch-state-live {
   color: #0a8f4f;
+}
+[data-theme="light"] .branch-state-detached {
+  color: #a35a00;
 }
 [data-theme="light"] .branch-state-error {
   color: #c62828;

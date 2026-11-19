@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { deployBranch, devServerSource, makeRepo, request, startApp } from "./helpers.js";
@@ -229,6 +230,7 @@ test("preview worktrees inherit the developer's local env files", { timeout: 120
   const featureDeployment = await deployReadyPreview(ctx, project.id, "feat/env");
   assert.equal(featureDeployment.status, "ready", featureDeployment.error || "");
   assert.equal(featureDeployment.live, false);
+  assert.equal(featureDeployment.liveState, "snapshot");
   const worktreeRoot = path.join(ctx.dataDir, "worktrees", project.id);
   const featureWorktree = path.join(
     worktreeRoot,
@@ -256,6 +258,7 @@ test("preview worktrees inherit the developer's local env files", { timeout: 120
   const mainDeployment = await deployReadyPreview(ctx, project.id, "main");
   assert.equal(mainDeployment.status, "ready", mainDeployment.error || "");
   assert.equal(mainDeployment.live, true);
+  assert.equal(mainDeployment.liveState, "following");
   const mainWorktree = path.join(
     worktreeRoot,
     fs.readdirSync(worktreeRoot).find((name) => name.startsWith("main-"))
@@ -325,6 +328,7 @@ test("checked-out branch previews follow uncommitted edits live", { timeout: 120
   const snapshotDeployment = await deployReadyPreview(ctx, project.id, "feat/snapshot");
   assert.equal(snapshotDeployment.status, "ready");
   assert.equal(snapshotDeployment.live, false);
+  assert.equal(snapshotDeployment.liveState, "snapshot");
 
   const mainUrl = "http://127.0.0.1:" + mainDeployment.port + "/";
   const snapshotUrl = "http://127.0.0.1:" + snapshotDeployment.port + "/";
@@ -447,4 +451,301 @@ test("Vite previews use the fs.allow overlay when the project config loads", { t
   const argv = JSON.parse(fs.readFileSync(path.join(worktreePath, "vite-argv.json"), "utf8"));
   assert.ok(argv.includes("--config"));
   assert.equal(argv[argv.indexOf("--config") + 1], ".vercio.vite.config.mjs");
+});
+
+test("worktree sources preview live edits and follow new commits", { timeout: 120000 }, async (t) => {
+  const appFiles = (content) => ({
+    "package.json": JSON.stringify(
+      { name: "worktree-live", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    ),
+    "dev.mjs": liveContentServer(),
+    "content.txt": content,
+  });
+  const repo = makeRepo("worktree-live", {
+    files: appFiles("main content"),
+    branches: [
+      { name: "feat/agent", files: appFiles("agent content"), message: "feat: agent branch" },
+    ],
+  });
+  const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vercio-agent-wt-"));
+  const worktree = path.join(worktreeRoot, "feat-agent");
+  execFileSync("git", ["worktree", "add", worktree, "feat/agent"], { cwd: repo, stdio: "ignore" });
+  t.after(() => {
+    fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  assert.equal(created.status, 201);
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id, "feat/agent");
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  assert.equal(deployment.live, true);
+  assert.equal(deployment.liveState, "following");
+  assert.equal(deployment.sourceKind, "worktree");
+
+  const url = "http://127.0.0.1:" + deployment.port + "/";
+  const textOf = async () => (await fetch(url)).text();
+  assert.match(await textOf(), /agent content/);
+
+  // Uncommitted edits in the agent's worktree show up without a redeploy.
+  fs.writeFileSync(path.join(worktree, "content.txt"), "agent edit");
+  assert.equal(await waitFor(async () => /agent edit/.test(await textOf())), true);
+
+  // A commit moves the branch tip: the same preview follows it in place.
+  fs.writeFileSync(path.join(worktree, "content.txt"), "agent committed");
+  execFileSync("git", ["add", "content.txt"], { cwd: worktree, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "feat: working tree commit"], {
+    cwd: worktree,
+    stdio: "ignore",
+  });
+  const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: worktree,
+    encoding: "utf8",
+  }).trim();
+  assert.equal(
+    await waitFor(async () => {
+      const result = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+      return result.json?.deployment?.commit === committedSha;
+    }),
+    true,
+    "preview did not follow the new commit"
+  );
+  assert.equal(await waitFor(async () => /agent committed/.test(await textOf())), true);
+
+  // The same branch reuses the same preview (no extra port, no new deployment).
+  const again = await request(ctx.base, "POST", "/api/projects/" + project.id + "/deployments", {
+    branch: "feat/agent",
+  });
+  assert.equal(again.json.reused, true);
+  assert.equal(again.json.deployment.id, deployment.id);
+
+  // Sources are exposed without leaking filesystem paths.
+  const sources = await request(ctx.base, "GET", "/api/projects/" + project.id + "/sources");
+  assert.equal(sources.status, 200);
+  const agentSource = sources.json.sources.find((source) => source.branch === "feat/agent");
+  assert.ok(agentSource);
+  assert.equal(agentSource.kind, "worktree");
+  assert.equal("path" in agentSource, false);
+  const branches = await request(ctx.base, "GET", "/api/projects/" + project.id + "/branches");
+  assert.ok(
+    branches.json.sources.some((source) => source.branch === "feat/agent"),
+    "branches response should include sources"
+  );
+
+  // Detach and reattach the live overlay without touching the preview.
+  const detached = await request(
+    ctx.base,
+    "DELETE",
+    "/api/deployments/" + deployment.id + "/follow"
+  );
+  assert.equal(detached.json.deployment.liveState, "snapshot");
+  assert.equal(detached.json.deployment.live, false);
+  const reattached = await request(
+    ctx.base,
+    "POST",
+    "/api/deployments/" + deployment.id + "/follow"
+  );
+  assert.equal(reattached.json.deployment.liveState, "following");
+  assert.equal(reattached.json.deployment.sourceKind, "worktree");
+});
+
+test("switching the working copy detaches live edits without stopping the preview", { timeout: 120000 }, async (t) => {
+  const appFiles = (content) => ({
+    "package.json": JSON.stringify(
+      { name: "detach-live", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    ),
+    "dev.mjs": liveContentServer(),
+    "content.txt": content,
+  });
+  const repo = makeRepo("detach-live", {
+    files: appFiles("main content"),
+    branches: [
+      { name: "feat/agent", files: appFiles("agent content"), message: "feat: agent" },
+      { name: "feat/other", files: appFiles("other content"), message: "feat: other" },
+    ],
+  });
+  const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vercio-agent-wt-"));
+  const worktree = path.join(worktreeRoot, "feat-agent");
+  execFileSync("git", ["worktree", "add", worktree, "feat/agent"], { cwd: repo, stdio: "ignore" });
+  t.after(() => {
+    fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id, "feat/agent");
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  assert.equal(deployment.live, true);
+
+  // The developer's main copy moves to another branch; the agent worktree still
+  // owns feat/agent, so the preview keeps working and only re-binds its source.
+  execFileSync("git", ["checkout", "feat/other"], { cwd: repo, stdio: "ignore" });
+  assert.equal(
+    await waitFor(async () => {
+      const result = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+      return result.json?.deployment?.liveState === "following";
+    }),
+    true,
+    "preview should keep following the worktree source"
+  );
+
+  // Removing the only worktree with the branch detaches the overlay instead of
+  // stopping the preview.
+  execFileSync("git", ["worktree", "remove", "--force", worktree], {
+    cwd: repo,
+    stdio: "ignore",
+  });
+  assert.equal(
+    await waitFor(async () => {
+      const result = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+      return result.json?.deployment?.liveState === "detached";
+    }),
+    true,
+    "preview did not detach after the source worktree was removed"
+  );
+  const after = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+  assert.equal(after.json.deployment.status, "ready");
+  assert.equal(after.json.deployment.live, false);
+  const page = await fetch("http://127.0.0.1:" + deployment.port + "/");
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /agent content/);
+});
+
+test("a running preview attaches to a worktree created later", { timeout: 120000 }, async (t) => {
+  const appFiles = (content) => ({
+    "package.json": JSON.stringify(
+      { name: "late-source", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    ),
+    "dev.mjs": liveContentServer(),
+    "content.txt": content,
+  });
+  const repo = makeRepo("late-source", {
+    files: appFiles("main content"),
+    branches: [
+      { name: "feat/late", files: appFiles("late branch content"), message: "feat: late" },
+    ],
+  });
+  const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vercio-late-wt-"));
+  const worktree = path.join(worktreeRoot, "feat-late");
+  t.after(() => {
+    fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id, "feat/late");
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  assert.equal(deployment.liveState, "snapshot");
+  const url = "http://127.0.0.1:" + deployment.port + "/";
+  const textOf = async () => (await fetch(url)).text();
+  assert.match(await textOf(), /late branch content/);
+
+  // The agent starts working after the preview: create its worktree now.
+  execFileSync("git", ["worktree", "add", worktree, "feat/late"], { cwd: repo, stdio: "ignore" });
+  assert.equal(
+    await waitFor(async () => {
+      const result = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+      return result.json?.deployment?.liveState === "following";
+    }),
+    true,
+    "preview did not attach to the new worktree"
+  );
+
+  fs.writeFileSync(path.join(worktree, "content.txt"), "late live edit");
+  assert.equal(await waitFor(async () => /late live edit/.test(await textOf())), true);
+});
+
+function versionServer() {
+  return [
+    'import fs from "node:fs";',
+    'import http from "node:http";',
+    "const port = Number(process.env.PORT || 4399);",
+    'const host = process.env.HOST || "0.0.0.0";',
+    "http.createServer((req, res) => {",
+    '  let version = "unknown";',
+    '  try { version = JSON.parse(fs.readFileSync("package.json", "utf8")).version || "none"; } catch {}',
+    '  res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });',
+    '  res.end("version " + version);',
+    '}).listen(port, host, () => console.log("version fixture ready on " + port));',
+    "",
+  ].join("\n");
+}
+
+test("a commit that changes dependencies restarts the preview in place", { timeout: 120000 }, async (t) => {
+  const repo = makeRepo("deps-restart", {
+    files: {
+      "package.json": JSON.stringify(
+        { name: "deps-restart", version: "1.0.0", private: true, scripts: { dev: "node dev.mjs" } },
+        null,
+        2
+      ),
+      "dev.mjs": versionServer(),
+    },
+  });
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const ctx = await startApp();
+  t.after(() => ctx.cleanup());
+  const created = await request(ctx.base, "POST", "/api/projects", { source: repo });
+  const project = created.json.project;
+
+  const deployment = await deployReadyPreview(ctx, project.id, "main");
+  assert.equal(deployment.status, "ready", deployment.error || "preview did not start");
+  const url = "http://127.0.0.1:" + deployment.port + "/";
+  // The preview briefly closes its port while it restarts, so tolerate resets.
+  const versionOf = async () => {
+    try {
+      return await (await fetch(url)).text();
+    } catch {
+      return "";
+    }
+  };
+  assert.match(await versionOf(), /version 1\.0\.0/);
+
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify(
+      { name: "deps-restart", version: "1.0.1", private: true, scripts: { dev: "node dev.mjs" } },
+      null,
+      2
+    )
+  );
+  execFileSync("git", ["add", "package.json"], { cwd: repo, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "chore: bump version"], { cwd: repo, stdio: "ignore" });
+
+  const restarted = await waitFor(async () => /version 1\.0\.1/.test(await versionOf()));
+  assert.equal(restarted, true, "preview did not restart after the dependency file changed");
+  assert.equal(
+    await waitFor(async () => {
+      const result = await request(ctx.base, "GET", "/api/deployments/" + deployment.id + "/logs");
+      return /Preview restarted on port/.test(result.json.log);
+    }),
+    true,
+    "restart did not finish"
+  );
+  const logs = await request(ctx.base, "GET", "/api/deployments/" + deployment.id + "/logs");
+  assert.match(logs.json.log, /Dependencies changed; restarting the preview in place/);
+  assert.match(logs.json.log, /Preview restarted on port/);
+
+  const after = await request(ctx.base, "GET", "/api/deployments/" + deployment.id);
+  assert.equal(after.json.deployment.status, "ready");
+  assert.equal(after.json.deployment.port, deployment.port);
 });

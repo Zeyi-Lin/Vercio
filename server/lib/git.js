@@ -255,6 +255,48 @@ export async function diffStat(repoDir, baseRef, headRef) {
   return { files: [], fileCount: 0, additions: 0, deletions: 0 };
 }
 
+/**
+ * Current tip of a branch, local first then origin. Returns null when the
+ * branch disappeared (deleted / never existed), which the preview handles by
+ * keeping its last commit instead of failing.
+ */
+export async function resolveBranchTip(repoDir, branchName) {
+  if (!branchName) return null;
+  for (const ref of ["refs/heads/" + branchName, "refs/remotes/origin/" + branchName]) {
+    const result = await runGit(
+      ["rev-parse", "--verify", "--quiet", ref + "^{commit}"],
+      repoDir,
+      { allowFail: true }
+    );
+    if (result.code === 0 && result.stdout.trim()) return result.stdout.trim();
+  }
+  return null;
+}
+
+/** Files that differ between two commits (used to detect dependency changes). */
+export async function diffNames(repoDir, from, to) {
+  const result = await runGit(
+    ["diff", "--name-only", "--no-renames", from, to],
+    repoDir,
+    { allowFail: true, timeoutMs: 60000 }
+  );
+  if (result.code !== 0) return [];
+  return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+/** Fast-forwards a Vercio-owned preview worktree to a new commit. */
+export async function checkoutWorktree(worktreeDir, commitSha) {
+  const result = await runGit(
+    ["checkout", "--force", "--detach", commitSha],
+    worktreeDir,
+    { allowFail: true, timeoutMs: 120000 }
+  );
+  if (result.code !== 0) {
+    const detail = (result.stderr || result.stdout || "").trim();
+    throw new Error("Could not check out " + commitSha + ": " + detail);
+  }
+}
+
 export async function addWorktree(repoDir, commitSha, destDir) {
   await fs.promises.mkdir(path.dirname(destDir), { recursive: true });
   await fs.promises.rm(destDir, { recursive: true, force: true });

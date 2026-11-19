@@ -212,7 +212,13 @@ inflight: ref<Set<branch>>（防重复请求）
 
 轮询：所有 pending 部署每 1.1s 并发拉 `GET /deployments/:id` + `/logs`；任一进入终态 → 重新拉分支列表，并立即拉一次该部署日志、600ms 后再补一次（捕获退出时刷出的尾部输出）。
 
-**实时预览**：`Deployment.live === true` 表示该部署的分支就是工作副本当前 checked-out 分支，服务端会把未提交改动同步进 worktree（见 [architecture.md §8.8](architecture.md)），前端不需要额外轮询——HMR 会自己更新 iframe。工具栏在 ready 且 live 时显示带绿点的 `LIVE` 徽标（`t("preview.live")`，tooltip 为 `preview.liveHint`）；其它分支保持提交快照。`live` 只是展示性状态，停止/失败时徽标随之消失。
+**实时预览**：服务端给每个运行中的预览挂 follower（见 [architecture.md §8.8](architecture.md)），自动前滚分支 tip 并从"编辑源"（主工作副本或任意 worktree）镜像未提交改动，前端不需要轮询——HMR 会自己更新 iframe。`Deployment.liveState` 是展示依据：
+
+- `following`：工具栏显示带绿点的 `LIVE` 徽标（tooltip `preview.liveHint`，带 `{source}`/`{branch}`）；
+- `snapshot`：显示虚线 `快照 · <sha>` 徽标，tooltip 提示"还没有 worktree 检出该分支"；
+- `detached`：琥珀色 `实时改动已断开` 徽标 + 预览上方的 banner，带「重新绑定改动」按钮（`POST /api/deployments/:id/follow`），失败/无源用 toast 提示。
+
+分支列表里，`following` 的分支显示"实时"、`detached` 显示"已断开"；有编辑源但还没启动预览的分支显示"编辑中"（来自 `/branches` 响应的 `sources`，不含路径）。
 
 ### 5.6 笔记保存
 
@@ -271,7 +277,7 @@ inflight: ref<Set<branch>>（防重复请求）
 - 左 `BranchPanel`：分支标题 + 计数 + 收起/刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
 - 右键分支卡弹出上下文菜单：置顶 / 取消置顶（`Project.pinnedBranch`，同一时间最多一个）。置顶分支排到列表最前并显示 pin 图标；动作乐观更新并 PATCH `/api/projects/:id`，失败回滚 + toast。底部提示被窄栏截断时，完整文案放在 `title` tooltip 里。
 - 分支栏可折叠成 44px 竖排窄条（`.previews-branches-collapsed`，只留展开/刷新按钮与分支数）；折叠状态存 `localStorage` 的 `vercio:branch-panel-collapsed`，≤860px 堆叠布局下强制展开并隐藏收起按钮。
-- 中 `preview-stage`：工具栏（分支名/状态/LIVE 徽标/mode/prod 标签 + 设备切换 + Discussion + Settings）、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、「分享预览」分支局域网链接）。
+- 中 `preview-stage`：工具栏（分支名/状态/实时或快照徽标/mode/prod 标签 + 设备切换 + Discussion + Settings）、断源 banner、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、「分享预览」分支局域网链接）。
 - 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
 - 点击分支只切换视图；未运行的分支显示 idle 状态和「启动预览」按钮，不弹确认框。任何自动路径都不会 POST deploy。
 - 浏览器框右上角有「全屏预览」按钮：给 `.preview-frame-wrap` 加 `.is-focus`（`position: fixed; inset: 0`），只铺满**浏览器视口**，浏览器标签页和地址栏仍可见（不调用原生 Fullscreen API，不会占满显示器）。进入后只显示 iframe 页面，底部居中浮层 `退出全屏 Esc`；父页面监听 `keydown` 处理 Esc（点击 iframe 内部后焦点进入跨源文档、Esc 不再冒泡，此时用浮层按钮退出）。预览状态变为非 ready 时自动退出。
@@ -321,7 +327,7 @@ inflight: ref<Set<branch>>（防重复请求）
 | `ThemeToggle.tsx` | 亮/暗 | 顶栏不再放置；主题切换在「本地资料」弹窗的 segmented 控件（`useTheme`） |
 | `ProjectCard.tsx` | 项目卡 | `ProjectMark` 按名称哈希色相；导入/失败/未部署状态；最新提交 |
 | `DeploymentList.tsx` | 部署列表 | 表格与紧凑两种；链接到 `?branch=` |
-| `BranchPanel.tsx` | 分支列表 | 过滤 name/subject/author；每分支部署状态；prod 标签 |
+| `BranchPanel.tsx` | 分支列表 | 过滤 name/subject/author；每分支部署状态（实时/快照/已断开/编辑中）；prod 标签 |
 | `PreviewPane.tsx` | 预览核心 | `PENDING_STATUSES`/`isPendingStatus`、`PreviewState`（构建步骤/错误/停止/日志）、`BrowserFrame`（设备框、iframe、复制、新标签、刷新） |
 | `CommentsPanel.tsx` | 分支讨论 | 关联笔记（`note.branch === branch`）、发评论、仅删除自己 client 的评论、Cmd/Ctrl+Enter |
 | `Markdown.tsx` | Markdown 渲染 | memo + `renderMarkdown` |

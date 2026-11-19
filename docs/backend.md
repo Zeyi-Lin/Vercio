@@ -142,34 +142,38 @@ events.closeAll();
 
 ## 6. `DeploymentManager`
 
-构造参数：`{ store, events, config }`。内存映射：`children`（dev server 进程）、`installChildren`、`staticServers`、`logs`（内存日志）、`runners`（运行中的 Promise）、`stopping`（正在停止的 id）。
+构造参数：`{ store, events, config }`。内存映射：`children`（dev server 进程）、`installChildren`、`staticServers`、`logs`（内存日志）、`runners`（运行中的 Promise）、`stopping`（正在停止的 id）、`followers`（每个运行中部署的实时跟随器）、`sourceCache`（项目 → `git worktree list` 结果，1.2s TTL）、`restartingDeployments`（依赖变化重启中的 id）。
 
 ### 方法与职责
 
 | 方法 | 行为 |
 | --- | --- |
 | `recoverInterrupted()` | 活动状态→`error`；`ready`→`stopped`；`markDirty` |
-| `toPublic(deployment)` | 显式投影；`port` 只在 ready 时返回；`mode` 回退 `requestedMode`；`isProduction` 恒 false |
+| `toPublic(deployment)` | 显式投影；`port` 只在 ready 时返回；`mode` 回退 `requestedMode`；`liveState` 回退 `live ? following : snapshot`；`sourceKind` 只给类型不给路径；`isProduction` 恒 false |
 | `latestByBranch(projectId)` | 每个分支 `createdAt` 最大的部署 |
-| `getBranches(project, gitModule)` | `listBranches` + 每分支最新部署 + 默认/当前分支 |
+| `getBranches(project, gitModule)` | `listBranches` + 每分支最新部署 + 编辑源列表（`sources`，不含路径）+ 默认/当前分支 |
 | `create(project, branch, { mode })` | 校验→解析 ref→去重→插入记录→启动后台 runner→返回 `{deployment, reused}` |
 | `run(deployment, project)` | 完整流水线（见 [architecture.md](architecture.md#83-run-的完整步骤)） |
 | `installDependencies(...)` | 复用工作副本/缓存或安装；成功后写缓存并 symlink |
-| `copyLocalEnvFiles(deployment, project, worktreePath)` | 把工作副本根目录被 gitignore 的 `.env*` 复制进 worktree（已跟踪/已存在的不覆盖，跳过 example/sample/template，>512KB 跳过；只记文件名） |
+| `copyLocalEnvFiles(deployment, project, worktreePath, sourcePath)` | 把编辑源（绑定源，缺省主工作副本）根目录被 gitignore 的 `.env*` 复制进 worktree（已跟踪/已存在的不覆盖，跳过 example/sample/template，>512KB 跳过；只记文件名） |
 | `devServerAttempts(deployment, detection, worktreePath, command)` | 生成 dev server 启动候选：先尝试 Vite fs.allow overlay 命令，原命令始终作为回退 |
 | `startDevServerChild(deployment, worktreePath, attempt, port)` | spawn 一个候选命令、接管 stdout/stderr、等 HTTP 就绪；失败时清理子进程并把日志根因拼进错误 |
 | `startStaticServer(...)` | `findFreePort` → `http.createServer(serveStaticDir(spaFallback))` → 绑 `0.0.0.0` |
 | `previewPort(id)` | 仅 ready 且有 port 时返回，否则 null |
 | `refreshCheckedOutBranch(project)` | `git branch --show-current`，和项目记录不一致时更新 `currentBranch` 并广播 |
-| `initLiveSync(deployment, project, worktreePath)` | live 部署：建 controller、首次全量同步、启动 watcher |
-| `startLiveWatcher(controller)` | `fs.watch(repoPath,{recursive})` + 2s 轮询兜底；120ms 去抖 |
-| `syncLiveWorkingCopy(controller, deployment, initial)` | 校验分支 → `syncWorkingCopyState` → 节流日志；分支变了会停掉 live 预览 |
-| `stopLiveSync(id)` / `requestLiveSync(id)` | 清理 watcher/定时器 / 手动触发一次同步 |
+| `getSources(project, { force })` | 带 TTL 的 `listSources()` 包装；排除 Vercio 自己的 worktree/deps |
+| `applySource(deployment, source, { lost })` | 写 `sourcePath`/`sourceKind`/`live`/`liveState`（source 为空且 `lost` 时是 `detached`） |
+| `startFollower(deployment, project, worktreePath)` | 建 follower、首次 tip/源绑定 + 全量镜像、启动 watcher 与 2s 轮询 |
+| `refreshFollow(controller, deployment, project)` | tip 前滚 → 重新绑定编辑源 → 增量镜像 → 触发依赖重启；源消失只解绑，不 stop |
+| `maybeRestart(controller, deployment, project)` | 依赖文件变化时在 ready/server 状态下原地重启（未 ready 时保留标记） |
+| `restartPreview(...)` | 杀旧子进程 → 卸 `node_modules` 软链 → 重新 install/复用 → 原端口重启 |
+| `stopFollower(id)` / `requestFollow(id)` | 清理 watcher/定时器 / 手动触发一次同步 |
+| `followById(id)` / `unfollowById(id)` | API 用：重新绑定并立即同步 / 断开镜像但继续跟随 tip |
 | `appendLog(deployment, chunk)` | 去 ANSI/CR，内存最多 4000 行，文件 append |
 | `getLog(id)` | 优先内存；否则文件最后 600 行 |
 | `failureHint(deploymentId)` | 从日志尾部反向找一行“像错误”的输出（跳过本系统时间戳行、`$`/`>` 回显、堆栈、npm ERR），截断 240，用于拼接 error |
 | `fail(deployment, message)` | status=error、error 截断 2000、finishedAt、日志、emit |
-| `cleanupBranchWorktrees(project, slug, keepPath)` | 删除同 slug 前缀的旧 worktree |
+| `cleanupBranchWorktrees(project, slug, keepPath)` | 删除同 slug 前缀、且没有被活动部署/follower 引用的旧 worktree |
 | `afterReady(project, deployment)` | 停同分支其它 ready 部署；`enforceMaxRunning` |
 | `enforceMaxRunning(keepId)` | 只统计 `mode=server && ready && port`，超过 `maxRunningDevServers` 停最旧 |
 | `killChild(id)` | 杀进程组：SIGTERM，4s 后 SIGKILL；安装进程也覆盖 |
@@ -180,28 +184,36 @@ events.closeAll();
 | `pruneHistory(projectId)` | 每项目只保留最新 60 条（创建时调用） |
 | `stopAll()` | 停止所有活动部署、关闭静态服务器、flush |
 
-### 实时同步（live preview）
+### 实时预览（分支 tip + 编辑源）
 
-`create()` 会读取工作副本的当前分支：部署分支与之相同 → `deployment.live = true` 并把 `live` 投影到 public DTO；复用已有 ready 部署时要求 `live` 也一致（旧的非 live 部署会被新部署顶替）。
+预览是分支的隔离 worktree，编辑发生在别处（主工作副本，或 harness/开发者的另一份 worktree）。`DeploymentManager` 给每个运行中的部署挂一个 **follower**：
 
-live 部署在 worktree 建好后先调用 `syncWorkingCopyState()` 全量同步一次，再启动 watcher。watch 事件触发后经 120ms 去抖执行增量同步；Linux 无递归 watch，用 2s 轮询兜底。同步只写 worktree，工作副本仅被读取。分支切换时 live 部署会 stop（error 提示重新部署）。
+1. 每 2s（以及 120ms 去抖的 watch 事件）解析分支 tip；tip 变了就在 Vercio 自己的 worktree 里 `git checkout -f --detach`，清空文件哈希（保留 `.env` 哈希），更新 deployment 的 commit/shortSha/标题/作者，广播 `deployment.updated`。dev server 不重启。
+2. 每 ≥2s 用 `git worktree list` 重新找该分支的编辑源（branch → source 一一映射），绑定/解绑，更新 `liveState`/`live`/`sourceKind` 并广播。源消失 → `detached`，预览继续服务，不 stop。
+3. 有源时调用 `syncWorkingCopyState({ sourceDir, worktreeDir, state })` 做未提交改动镜像；日志节流 1.5s。
+4. tip 前滚的 diff 命中 `package.json`/lockfile 时，原地重启同一部署（同端口、同 id）：杀旧子进程 → 删 worktree 里的 `node_modules` 软链 → `installDependencies` 重新复用/安装 → 重新 `devCommand` + `waitForHttp`。退出事件用 `restartingDeployments` 抑制"dev server exited"的误判。
+
+`create()` 在创建前也会做一次源绑定，保证 DTO 立刻是准确的；复用同分支 ready 部署时会立即触发一次同步。
 
 `live-sync.js` 的导出：
 
 | 导出 | 作用 |
 | --- | --- |
 | `parseStatusEntries(stdout)` | 解析 `git status --porcelain=v1 -z`；`R/C` 记录的原路径在下一个 NUL 分片 |
-| `syncWorkingCopyState({ repoDir, worktreeDir, state })` | 把工作副本改动镜像到 worktree；`state = { syncedPaths, fileHashes, envHashes }` 跨调用保存 |
-| `shouldIgnoreWatchPath(filename)` | 忽略 `.git`/`node_modules`/`dist` 等目录的 watch 噪声 |
+| `syncWorkingCopyState({ sourceDir, worktreeDir, state })` | 把编辑源改动镜像到 worktree；`state = { syncedPaths, fileHashes, envHashes }` 跨调用保存；旧参数 `repoDir` 仍兼容 |
+| `resetSyncState(state)` | tip 前滚后清空文件哈希基线（保留 `.env` 哈希） |
+| `createSyncState()` | 新建镜像状态 |
+| `shouldIgnoreWatchPath(filename)` | 忽略 `.git`/`node_modules`/`dist`/`.worktrees` 等目录的 watch 噪声 |
 
-同步细节：跳过 `.git`、`node_modules`、`.vercio`；跳过 `.env.example/sample/template`；单文件上限 32MB；symlink 按原样重建；内容哈希一致则不重复写（否则会每 2s 触发一次 HMR）；被 revert/提交的旧脏文件会从工作副本重新 copy 回 worktree。
+同步细节：跳过 `.git`、`node_modules`、`.vercio`、`.worktrees`；跳过 `.env.example/sample/template`；单文件上限 32MB；symlink 按原样重建；内容哈希一致则不重复写（否则会每 2s 触发一次 HMR）；被 revert/提交的旧脏文件会从编辑源重新 copy 回 worktree。gitignored 生成物与 submodule 不会被镜像。
 
 ### `create()` 的细节
 
 - 模式只接受 `auto/server/static`。
-- 去重只匹配 `status === "ready"` 且同 commit；`mode=auto` 可匹配任意已就绪模式，显式模式必须相等。
+- 去重匹配 `status === "ready"` 且同分支（不要求同 commit：follower 会前滚）；`mode=auto` 可匹配任意已就绪模式，显式模式必须相等。
+- 复用前会再列一次编辑源并立即同步；端口不应答时把旧记录标 `stopped`、释放端口后新建。
 - 旧记录被顶替/停止后不会复活；再次预览会新建记录。
-- 新记录字段包含 `ref, commit, shortSha, commitMessage, author, requestedMode, mode, status, port, urlPath, worktreePath, staticDir, framework, error, createdAt, readyAt, stoppedAt, lastViewedAt`。
+- 新记录字段包含 `ref, commit, shortSha, commitMessage, author, requestedMode, mode, status, port, urlPath, worktreePath, staticDir, framework, error, createdAt, readyAt, stoppedAt, lastViewedAt, sourcePath, sourceKind, followSource, live, liveState`。`sourcePath`/`followSource` 不投影到 public DTO。
 - `urlPath` 持久化值始终为 null；public DTO 在静态 ready 时把它计算成 `/preview/<id>/`，dev server 为 null。前端并不依赖它。
 - `lastViewedAt` 只在创建时写一次，之后没有更新逻辑。
 - `pruneHistory` 在 `unshift` 后执行，按数组顺序保留前 60 条（最新）。
@@ -211,7 +223,7 @@ live 部署在 worktree 建好后先调用 `syncWorkingCopyState()` 全量同步
 `run()` 的 `catch`：
 
 1. 若正在 `stopping` 且已 `stopped`，直接返回（避免把主动停止改成 error）。
-2. 若 dev server 仍存活：`killChild()`，然后 `await settleWithin(childClosed, 750)`，给进程最后的机会把 stdout/stderr 刷进日志。
+2. 先 `stopFollower()`，若 dev server 仍存活：`killChild()`，然后 `await settleWithin(childClosed, 750)`，给进程最后的机会把 stdout/stderr 刷进日志。
 3. `fail()` → `status=error`，写 `error`、`finishedAt`、日志、emit。`run()` 会在 waitForHttp 失败时用 `failureHint()` 把“端口占用/权限/命令不存在”等真实原因拼进 error（例如 `Dev server exited before it became ready (code 1): Port 4100 is already in use`）。
 4. 若已分配端口：`releasePort` + `port=null`。
 
@@ -222,7 +234,7 @@ live 部署在 worktree 建好后先调用 `syncWorkingCopyState()` 全量同步
 ### 并发注意事项（重要）
 
 - **没有锁**：同一分支并发 `create` 可能产生两个 runner，共用同一个 worktree 路径；`addWorktree` 会先 `rm -rf` 目标目录。这是当前最危险的竞态。
-- `cleanupBranchWorktrees` 可能在另一个部署仍在使用某 worktree 时删除它（slug 碰撞或旧 commit 清理）。
+- `cleanupBranchWorktrees` 现在会跳过被活动部署或 follower 引用的目录，但 slug 前缀碰撞（`feat/a` 与 `feat-a`）仍可能在两条分支之间误删。
 - 停止与自然退出通过 `stopping` 集合 + 状态判断尽量去重，但 6 秒窗口后就移除标记。
 
 ## 7. `git.js`

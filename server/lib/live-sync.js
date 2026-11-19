@@ -6,7 +6,7 @@ import { runGit } from "./git.js";
 const MAX_SYNC_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_ENV_FILE_BYTES = 512 * 1024;
 // Never copy these into a preview worktree (git/Vercio bookkeeping + dependencies).
-const SKIP_SEGMENTS = new Set([".git", ".vercio", "node_modules"]);
+const SKIP_SEGMENTS = new Set([".git", ".vercio", "node_modules", ".worktrees"]);
 // Working-copy writes in these directories are noise for the live watcher.
 const IGNORED_WATCH_DIRS = new Set([
   ".git",
@@ -21,6 +21,7 @@ const IGNORED_WATCH_DIRS = new Set([
   ".turbo",
   ".vite",
   ".dsh-tmp",
+  ".worktrees",
   "playwright-report",
   "test-results",
 ]);
@@ -82,8 +83,8 @@ function syncFingerprint(dir, relativePath) {
   return crypto.createHash("sha1").update(fs.readFileSync(source)).digest("hex");
 }
 
-function copyIntoWorktree(repoDir, worktreeDir, relativePath) {
-  const source = path.join(repoDir, relativePath);
+function copyIntoWorktree(sourceDir, worktreeDir, relativePath) {
+  const source = path.join(sourceDir, relativePath);
   const target = path.join(worktreeDir, relativePath);
   const info = fs.lstatSync(source);
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -113,17 +114,17 @@ function fileKind(dir, relativePath) {
   }
 }
 
-function syncEnvFiles(repoDir, worktreeDir, envHashes) {
+function syncEnvFiles(sourceDir, worktreeDir, envHashes) {
   const applied = [];
   let names = [];
   try {
-    names = fs.readdirSync(repoDir);
+    names = fs.readdirSync(sourceDir);
   } catch {
     return applied;
   }
   for (const name of names) {
     if (!ENV_FILE_RE.test(name) || ENV_FILE_SKIP_RE.test(name)) continue;
-    const source = path.join(repoDir, name);
+    const source = path.join(sourceDir, name);
     try {
       const info = fs.statSync(source);
       if (!info.isFile() || info.size > MAX_ENV_FILE_BYTES) continue;
@@ -139,17 +140,21 @@ function syncEnvFiles(repoDir, worktreeDir, envHashes) {
 }
 
 /**
- * Mirrors the working copy's uncommitted state (modified, deleted, renamed and
+ * Mirrors a source directory's uncommitted state (modified, deleted, renamed and
  * untracked-but-not-ignored files, plus root .env files) into the preview
- * worktree. The dev server's file watcher then triggers HMR as if the edit had
- * happened inside the preview itself.
+ * worktree. The source is the working copy or any worktree that has the branch
+ * checked out; the dev server's file watcher then triggers HMR as if the edit
+ * had happened inside the preview itself.
  *
  * `state` is mutated and kept between calls: { syncedPaths:Set, fileHashes:Map, envHashes:Map }.
  */
-export async function syncWorkingCopyState({ repoDir, worktreeDir, state }) {
+export async function syncWorkingCopyState({ sourceDir, repoDir, worktreeDir, state }) {
+  // `repoDir` is the pre-source-binding name; keep it working for callers that
+  // have not migrated yet. The directory is always read-only here.
+  const sourceRoot = sourceDir || repoDir;
   const status = await runGit(
     ["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
-    repoDir,
+    sourceRoot,
     { allowFail: true }
   );
   if (status.code !== 0) return { ok: false, changed: [], env: [] };
@@ -168,7 +173,7 @@ export async function syncWorkingCopyState({ repoDir, worktreeDir, state }) {
     const relativePath = safeRepoPath(entry.path);
     if (!relativePath || isEnvTemplate(relativePath)) continue;
     dirty.add(relativePath);
-    const info = fileKind(repoDir, relativePath);
+    const info = fileKind(sourceRoot, relativePath);
     if (!info) {
       removeFromWorktree(worktreeDir, relativePath);
       state.syncedPaths.delete(relativePath);
@@ -177,14 +182,14 @@ export async function syncWorkingCopyState({ repoDir, worktreeDir, state }) {
       continue;
     }
     try {
-      const fingerprint = syncFingerprint(repoDir, relativePath);
+      const fingerprint = syncFingerprint(sourceRoot, relativePath);
       // Already mirrored this exact content: don't rewrite the worktree file,
       // otherwise every poll would retrigger HMR/reloads.
       if (fingerprint && state.fileHashes.get(relativePath) === fingerprint) {
         state.syncedPaths.add(relativePath);
         continue;
       }
-      if (copyIntoWorktree(repoDir, worktreeDir, relativePath)) {
+      if (copyIntoWorktree(sourceRoot, worktreeDir, relativePath)) {
         state.syncedPaths.add(relativePath);
         state.fileHashes.set(relativePath, fingerprint);
         changed.push(relativePath);
@@ -198,8 +203,8 @@ export async function syncWorkingCopyState({ repoDir, worktreeDir, state }) {
     state.syncedPaths.delete(relativePath);
     state.fileHashes.delete(relativePath);
     try {
-      if (fileKind(repoDir, relativePath)) {
-        copyIntoWorktree(repoDir, worktreeDir, relativePath);
+      if (fileKind(sourceRoot, relativePath)) {
+        copyIntoWorktree(sourceRoot, worktreeDir, relativePath);
         changed.push(relativePath + " (restored)");
       } else {
         removeFromWorktree(worktreeDir, relativePath);
@@ -208,6 +213,23 @@ export async function syncWorkingCopyState({ repoDir, worktreeDir, state }) {
     } catch {}
   }
 
-  const env = syncEnvFiles(repoDir, worktreeDir, state.envHashes);
+  const env = syncEnvFiles(sourceRoot, worktreeDir, state.envHashes);
   return { ok: true, changed, env };
+}
+
+/**
+ * Drops the mirror bookkeeping after the preview worktree moved to another
+ * commit: the previous fingerprints describe files that no longer match the
+ * checked-out tree, and keeping them would skip copying live edits.
+ */
+export function resetSyncState(state) {
+  if (!state) return;
+  state.syncedPaths?.clear?.();
+  state.fileHashes?.clear?.();
+  // `envHashes` is kept: .env files are untracked and a checkout does not touch
+  // them, so rewriting identical content would only restart Vite for nothing.
+}
+
+export function createSyncState() {
+  return { syncedPaths: new Set(), fileHashes: new Map(), envHashes: new Map() };
 }

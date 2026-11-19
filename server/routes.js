@@ -6,6 +6,7 @@ import { HttpError, isInside, readJSONBody, sendError, sendJSON, serveStaticFile
 import { newId } from "./lib/ids.js";
 import { getSystemInfo } from "./lib/lan.js";
 import { diffStat, resolveBranch } from "./lib/git.js";
+import { toPublicSource } from "./lib/sources.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -336,7 +337,17 @@ export function createRequestHandler(deps) {
           defaultBranch: branches.defaultBranch,
           currentBranch: branches.currentBranch,
           branches: branches.branches,
+          sources: branches.sources || [],
         });
+        return;
+      }
+
+      match = pathname.match(/^\/api\/projects\/([^/]+)\/sources$/);
+      if (match && req.method === "GET") {
+        const project = projects.get(decodeURIComponent(match[1]));
+        if (project.status !== "ready") throw new HttpError(409, "Project is not ready yet");
+        const sources = await deployments.getSources(project, { force: true });
+        sendJSON(res, 200, { sources: sources.map((source) => toPublicSource(source)) });
         return;
       }
 
@@ -414,6 +425,17 @@ export function createRequestHandler(deps) {
         const id = decodeURIComponent(match[1]);
         const logs = deployments.getLog(id);
         sendJSON(res, 200, { id, log: logs.log, status: logs.status });
+        return;
+      }
+
+      match = pathname.match(/^\/api\/deployments\/([^/]+)\/follow$/);
+      if (match && (req.method === "POST" || req.method === "DELETE")) {
+        const id = decodeURIComponent(match[1]);
+        const deployment =
+          req.method === "POST"
+            ? await deployments.followById(id)
+            : deployments.unfollowById(id);
+        sendJSON(res, 200, { deployment });
         return;
       }
 

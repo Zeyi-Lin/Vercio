@@ -69,16 +69,16 @@ db.json
 | `projectId` | string | create | 关联 Project |
 | `branch` | string | create | 原始分支名（含 `/` 等） |
 | `ref` | string | create | 解析到的 git ref |
-| `commit` | string | create/run | 40 位 sha；run 开始时会重新解析 |
-| `shortSha` | string | create/run | 前 7 位 |
-| `commitMessage` | string | create | 提交标题 |
-| `author` | string | create | 提交作者名 |
+| `commit` | string | create/run/follower | 40 位 sha；run 开始时重新解析，之后 follower 跟随分支 tip 前滚 |
+| `shortSha` | string | create/run/follower | 前 7 位 |
+| `commitMessage` | string | create/follower | 提交标题，tip 前滚时刷新 |
+| `author` | string | create/follower | 提交作者名，tip 前滚时刷新 |
 | `requestedMode` | string | create | 请求的 `auto/server/static` |
 | `mode` | string | run | 解析后的 `server/static`（旧记录可能没有） |
 | `status` | string | 状态机 | 见下 |
 | `port` | number \| null | 分配/停止 | 预览监听端口；`fail` 会释放并置 null，`stop` 只释放端口但保留旧值；public 仅 ready 时输出 |
 | `urlPath` | string \| null | create（恒 null） | DB 中始终 null；public DTO 对静态 ready 计算 `/preview/<id>/`；前端未消费 |
-| `worktreePath` | string | run | 本 commit 的隔离目录 |
+| `worktreePath` | string | run | 隔离目录（目录名带创建时的 commit 后缀；tip 前滚后 HEAD 移动但目录名不变） |
 | `staticDir` | string \| null | run | 静态根目录（相对 worktree），`.` 或 `dist` 等 |
 | `framework` | object \| null | run | 检测结果快照 |
 | `error` | string \| null | fail/stop | 失败原因；`stop` 不写停止原因（ready 时清空），截断 2000 |
@@ -87,7 +87,11 @@ db.json
 | `stoppedAt` | ISO \| null | stop/recover | |
 | `lastViewedAt` | ISO | create | **只写不读**，预留 |
 | `devCommand` | string \| null | run | 实际命令 + 参数，供 UI 显示 |
-| `live` | boolean | create/run | true：部署分支 == 工作副本当前分支，worktree 会实时同步未提交改动；public DTO 输出 |
+| `live` | boolean | create/follower | true = 绑定到编辑源；public DTO 输出，等价于 `liveState === "following"` |
+| `liveState` | string | create/follower/API/stop/fail/recover | `following`（已绑定编辑源）/`snapshot`（没有 worktree 检出该分支）/`detached`（源已消失）；终态会清回 `snapshot`；public DTO 输出 |
+| `sourceKind` | string \| null | create/follower/API | `working-copy` 或 `worktree`；public DTO 输出，不含路径 |
+| `sourcePath` | string \| null | create/run/follower | 编辑源的绝对路径；内部字段，不投影 |
+| `followSource` | boolean | create/API | 是否允许自动绑定编辑源；`DELETE /follow` 置 false |
 | `finishedAt` | ISO \| null | fail | 内部；不在 public DTO |
 
 ### 状态
@@ -218,6 +222,8 @@ API 不直接返回数据库实体，而是经过 `ProjectsManager.toPublic()` /
 
 - `ref`
 - `worktreePath`
+- `sourcePath`
+- `followSource`
 - `staticDir`
 - `finishedAt`
 - `lastViewedAt`

@@ -226,7 +226,7 @@ queued ─► preparing ─┼─► installing ─► starting ─► ready ─
 
 - **静态预览**：`queued → preparing → ready`（不安装依赖、不启动 dev server）。
 - **dev server 预览**：`queued → preparing → [installing] → starting → ready`。依赖已存在/可复用时跳过 `installing`。
-- `error` 与 `stopped` 都是终态；再次预览会**新建一个 deployment**，不复用旧的（旧记录保留，最多每项目 60 条）。
+- `error` 与 `stopped` 都是终态；再次预览时，同分支已有 `ready` 部署会复用（见 8.2），否则**新建一个 deployment**（旧记录保留，最多每项目 60 条）。
 - 服务重启：活动状态 → `error`，`ready` → `stopped`。
 
 状态枚举同时存在于：数据库、SSE、[web/src/lib/types.ts](../web/src/lib/types.ts)、UI 文案与样式、状态页。**新增状态必须全链路同步**，见 [ai-coding.md](ai-coding.md#recipe-2新增一个部署状态)。
@@ -238,9 +238,10 @@ queued ─► preparing ─┼─► installing ─► starting ─► ready ─
 1. 项目必须 `ready`，否则 409。
 2. `mode ∈ {auto, server, static}`，否则 400。
 3. `git.resolveBranch`（`refs/heads` → `refs/remotes/origin` → 原始 ref）取 commit；`commitMeta` 取作者/标题。
-4. **复用**：同项目、同分支、同 commit、`status=ready`，且（请求 auto 或 mode 相同）→ 直接返回 200 `{deployment, reused:true}`。
+4. **复用**：同项目、同分支、`status=ready`，且（请求 auto 或 mode 相同）→ 直接返回 200 `{deployment, reused:true}`。不再要求 commit 相同：follower 会把 worktree 前滚到最新 tip（见 8.8）。
    - 静态预览直接复用；
    - dev server 预览会先 `isPortResponding(port)`；端口没响应则把旧部署标 `stopped`、释放端口，再新建。
+   - 复用时会同步刷新一次编辑源绑定（`git worktree list`），并触发一次立即同步。
 5. 否则插入 `dpl_*` 记录到数组头部、裁剪历史、`markDirty`、发 `deployment.created` 与 `deployment.updated`，**立即返回 202**，runner 在后台异步执行。
 
 因此“创建部署”是**异步任务提交**，不是同步完成；调用方必须轮询 `GET /api/deployments/:id` 或监听 SSE。
@@ -252,13 +253,15 @@ setStatus(preparing)
  1. 检查 repoPath/.git 存在，否则 error: Repository is missing
  2. 再次 resolveBranch，回填 commit/shortSha（分支可能在排队期间移动）
  3. worktreePath = worktrees/<projectId>/<slug(branch)>-<commit[0:8]>
- 4. cleanupBranchWorktrees：删除同项目、同 branchSlug 前缀、非当前路径的旧 worktree
+ 4. cleanupBranchWorktrees：删除同项目、同 branchSlug 前缀、非当前路径、且没有被活动部署/
+    follower 引用的旧 worktree（还在服务的旧预览不会被新提交删掉）
  5. git worktree add --detach --force <worktreePath> <commit>
- 5b. copyLocalEnvFiles：把工作副本根目录里被 gitignore 的 `.env*` 复制进 worktree
+ 5b. copyLocalEnvFiles：把编辑源根目录里被 gitignore 的 `.env*` 复制进 worktree
      （分支已提交的同名文件不覆盖；日志只记文件名，不记值）
- 5c. 若分支 == 工作副本当前 checked-out 分支：deployment.live = true，先全量同步一次
-     工作副本的未提交改动（git status 里的修改/新增/删除/重命名 + 根 `.env*`）
- 5d. live：启动工作副本 watcher（fs.watch 递归；2s 轮询兜底），后续编辑增量同步进 worktree
+ 5c. listSources + sourceForBranch：绑定该分支的编辑源（主工作副本或任意 worktree），
+     deployment.live / liveState / sourceKind 落库；先全量镜像一次未提交改动
+ 5d. startFollower：watch 编辑源（fs.watch 递归；2s 轮询兜底）+ 2s 轮询分支 tip；
+     后续提交前滚、编辑增量同步进 worktree
  6. detectProject(worktree) → framework {label,type,kind,packageManager}
     若与 project.framework.label 不同 → 更新项目并广播 project.updated
  7. 解析 mode：auto → detection.type === "server" ? server : static
@@ -274,7 +277,7 @@ setStatus(preparing)
     e. spawn(detached:true, stdio:pipe) → 进程组
     f. waitForHttp(port, 120s, child 退出即 abort)
     g. ready → afterReady
-10. 启动/检测阶段异常 → 先停止 live watcher；若 dev server 仍存活则先 kill，等待其 close ≤750ms 让剩余 stdout/stderr 落日志；
+10. 启动/检测阶段异常 → 先停止 follower；若 dev server 仍存活则先 kill，等待其 close ≤750ms 让剩余 stdout/stderr 落日志；
     waitForHttp 失败时从日志尾部提取一行“失败提示”（端口占用/权限/命令不存在等）拼进 error；
     fail（status=error, error 截断 2000 字符）→ 释放端口
 11. finally → markDirty + 广播 deployment.updated
@@ -282,10 +285,10 @@ setStatus(preparing)
 
 ### 8.4 worktree 策略
 
-- 每个 `(project, branch, commit)` 一个目录；目录名用 `slugify(branch)`（只保留 `a-z0-9._-`，截断 60）+ commit 前 8 位。
-- 每次部署新 commit 时，`cleanupBranchWorktrees` 会删除**同一分支 slug** 的旧目录，保证一个分支只留最近一次。
-- worktree 是 `--detach` 到具体 commit，不是 checkout 分支；因此不会移动分支指针，也不会碰用户工作副本。
-- 创建后会把工作副本根目录的 `.env`、`.env.local`、`.env.<mode>`、`.env.<mode>.local` 复制进 worktree（`.example/.sample/.template` 除外；目标已存在则不覆盖）。这些文件通常被 gitignore，不复制的话需要 `VITE_*` 等变量的前端会在启动时直接抛错、页面白屏。
+- 每个 deployment 一个目录；目录名用 `slugify(branch)`（只保留 `a-z0-9._-`，截断 60）+ 创建时 commit 的前 8 位。
+- `cleanupBranchWorktrees` 只在建新 worktree 前删除**同一分支 slug** 的旧目录，并跳过仍被活动部署/follower 引用的路径；已经 ready 的预览不会被新提交的清理误删。
+- worktree 是 `--detach` 到具体 commit，不是 checkout 分支；因此不会移动分支指针，也不会碰用户工作副本。follower 之后会在同一个 worktree 里 `checkout -f --detach` 前滚；目录名里的旧 commit 后缀不再更新，属于内部细节。
+- 创建后会把**编辑源**根目录的 `.env`、`.env.local`、`.env.<mode>`、`.env.<mode>.local` 复制进 worktree（`.example/.sample/.template` 除外；目标已存在则不覆盖；没有绑定源时回退主工作副本）。这些文件通常被 gitignore，不复制的话需要 `VITE_*` 等变量的前端会在启动时直接抛错、页面白屏。
 - 删除项目时：先停预览，再对每个 `deployment.worktreePath` 做 `git worktree remove --force`，最后 `rm -rf worktrees/<projectId>`，并刷新 `git worktree prune`。
 
 **已知风险**：分支名 slug 会碰撞（`feat/a` 与 `feat-a` 都变 `feat-a`），清理逻辑可能删掉另一分支的 worktree；并发部署同一分支也没有锁，两个 runner 可能对同一目录执行 `rm -rf` + `worktree add`（见技术债）。
@@ -332,18 +335,31 @@ devInstallPlan:
 - 服务重启后内存日志丢失，`getLog` 回退读文件最后 600 行。
 - 删除项目不会删除日志文件（已知泄漏点）。
 
-### 8.8 实时同步（live preview）
+### 8.8 实时预览（分支 tip + 编辑源）
 
-预览对象是分支的隔离 worktree，而开发者平时编辑的是工作副本。为了做到"保存即渲染"，当部署的分支正是仓库当前 checkout 的分支时，部署会标记为 `live`（public DTO 字段 `live`），把工作副本的未提交状态同步叠加到 worktree 上：
+预览对象是分支的隔离 worktree。为了让"保存即渲染"覆盖多会话并行改多个分支的场景，实时模型从「工作副本当前分支」升级为「分支 tip + 编辑源」：
 
-- 创建 worktree 后先全量同步一次；之后用 `fs.watch(repoPath, { recursive: true })`（macOS/Windows 支持递归）触发增量同步，Linux 没有递归 watch 时靠 2s 轮询兜底；事件去抖 120ms。
-- 同步内容：`git status --porcelain=v1 -z --untracked-files=all` 列出的修改/新增/删除/重命名（重命名会先删旧路径），跳过 `node_modules`、`.git`、`.vercio` 以及 `.env.example/sample/template`；另外单独同步仓库根目录的 `.env*`（内容哈希去重，编辑器保存后 Vite 会自动重启）。
-- **只写 worktree，不写工作副本**：worker 对 `repoPath` 只做只读的 `git status`/`branch --show-current` 与文件读取；dev server 的文件 watcher 看到 worktree 变化后触发 Vite/Next HMR，iframe 不刷新即可看到新代码。
-- 同步前比较内容哈希：同一内容不会重复 copy，避免 2s 轮询把 HMR 变成反复整页 reload。
-- 分支切换兜底：每次同步前检查当前分支，一旦工作副本切到别的分支，live 预览会 stop 并提示重新部署，避免状态显示 ready 却展示过期内容。
-- 停止/失败/顶替/关机都会关闭 watcher、轮询与去抖定时器。
+- **tip 跟随**：每个运行中的预览都有一个 follower。每 2s 解析 `refs/heads/<branch>`（回退 `refs/remotes/origin/<branch>`）；tip 前进时在自己的 worktree 里 `git checkout -f --detach <tip>`，清空文件哈希（保留 `.env` 哈希），更新 deployment 的 commit/短 sha/标题/作者并广播 `deployment.updated`。dev server 不重启，Vite/Next 自己热更新。
+- **编辑源**：`git worktree list --porcelain` 找"当前检出该分支"的目录——主工作副本，或任意 harness/开发者 worktree（排除 `.vercio/worktrees`、`.vercio/deps` 下的 Vercio 产物）。git 保证一个分支最多被一个 worktree 检出，所以 branch → source 一一映射。绑定后 `live = true`、`liveState = "following"`、`sourceKind = "working-copy" | "worktree"`；用源的 `git status` + 文件内容做未提交镜像。
+- **源只在读**：对编辑源只允许 `rev-parse`、`worktree list`、`status` 与文件读取；写入只发生在 Vercio 自己的 worktree。
+- **不因源移动而停预览**：源切走/被删除 → `liveState = "detached"`、`live = false`，预览继续跟随 tip 服务最后状态；UI 显示 banner 与「重新绑定」。主工作副本切分支不再是错误路径，也不会 stop 预览。
+- **无源也跟随**：没有 worktree 检出该分支时 `liveState = "snapshot"`，预览仍跟随 tip，只是没有未提交层。`live` 字段保留兼容，等价于 `liveState === "following"`；`sourcePath` 不投影到 public DTO。
+- **依赖变化自动重启**：tip 前滚的 diff 命中 `package.json` 或 lockfile 时，原地重启同一部署（卸掉 `node_modules` 软链 → 重新 install/复用缓存 → 同端口重启），状态短暂回到 `installing/starting`，端口和 deployment id 不变。
+- **失败兜底**：tip 解析失败（分支被删）保持旧 commit 并节流记日志；`checkout -f` 失败只记录，不会让预览崩掉。
 
-因此：**只有 checked-out 分支的预览会实时跟随本地编辑**；其它分支（以及未提交改动之外的东西，如依赖安装）仍是提交快照。
+`live-sync.js` 的导出：
+
+| 导出 | 作用 |
+| --- | --- |
+| `parseStatusEntries(stdout)` | 解析 `git status --porcelain=v1 -z`；`R/C` 记录的原路径在下一个 NUL 分片 |
+| `syncWorkingCopyState({ sourceDir, worktreeDir, state })` | 把编辑源改动镜像到 worktree；`state = { syncedPaths, fileHashes, envHashes }` 跨调用保存。兼容旧参数名 `repoDir` |
+| `resetSyncState(state)` | tip 前滚后清空文件哈希基线（保留 `.env` 哈希），否则新内容会被当成"已同步"跳过 |
+| `createSyncState()` | 新建镜像状态 |
+| `shouldIgnoreWatchPath(filename)` | 忽略 `.git`/`node_modules`/`dist`/`.worktrees` 等目录的 watch 噪声 |
+
+同步细节：跳过 `.git`、`node_modules`、`.vercio`、`.worktrees`；跳过 `.env.example/sample/template`；单文件上限 32MB；symlink 按原样重建；内容哈希一致则不重复写（否则会每 2s 触发一次 HMR）；被 revert/提交的旧脏文件会从编辑源重新 copy 回 worktree。
+
+**限制**：只镜像 `git status` 里的文件。gitignored 的生成物、submodule、>32MB 文件不会进入预览；需要这些时只能提交或改用未来的就地模式。SSE 事件沿用 `deployment.updated`，没有新增事件名。
 
 ## 9. 持久化与事件
 
@@ -397,7 +413,7 @@ devInstallPlan:
 修改代码时，以下不变量应保持；违反它们通常会造成难以定位的回归。
 
 1. **稳定预览 URL**：`/preview/<deploymentId>/<rest>` 必须 302 到预览端口并保留 `<rest>`；不要把 iframe 改成同源反代或改变 `<deploymentId>` 语义。
-2. **隔离**：任何预览相关操作只发生在 worktree/缓存目录，绝不 checkout、reset、clean 用户的工作副本；对用户仓库只允许 `fetch`、`worktree add/remove/prune`、只读查询。live preview 只**读**工作副本（`git status` + 文件内容），写入只发生在 worktree。
+2. **隔离**：任何预览相关操作只发生在 worktree/缓存目录，绝不 checkout、reset、clean 用户的工作副本；对用户仓库只允许 `fetch`、`worktree add/remove/prune`、只读查询。实时预览只**读**编辑源（主副本或任意 worktree 的 `git status` + 文件内容），写入只发生在 Vercio 自己的 worktree。
 3. **端口生命周期**：每个预览端口必须且只能被一个 deployment 占用；停止、失败、顶替、关机都要释放。新代码路径若分配端口，必须覆盖所有失败分支。
 4. **状态机一致性**：状态字符串同时被 DB、API、SSE、TS 类型、文案、CSS、状态页消费；新增/重命名状态必须全链路更新。
 5. **`requestedMode` 与 `mode` 分离**：请求值保留在 `requestedMode`，解析结果写 `mode`；`auto` 永远在服务端解析，不由客户端推断。
@@ -420,6 +436,7 @@ devInstallPlan:
 | --- | --- | --- |
 | 部署并发 | 没有 per-branch/per-project 锁；`create` 只对 `ready` 去重 | 两个并发 POST 可能同时创建部署，竞争同一 worktree（`rm -rf` + `worktree add`） |
 | worktree 清理 | 按 `branchSlug` 前缀删除旧目录 | `feat/a` 与 `feat-a` slug 相同，会互删；也可能删到仍在启动中的部署 |
+| 实时预览 | 已支持按分支绑定任意 worktree 的编辑源、tip 前滚、同分支复用；源消失时降级 `detached` 而非停止 | 仍只镜像 `git status` 里的文件（gitignored 生成物/submodule 看不到）；就地 attach 模式尚未实现（见 [live-preview-sources.md](live-preview-sources.md) §4.8） |
 | 依赖缓存 | 共享可写 `node_modules`；指纹不含平台/Node 版本 | 分支间可能共享 `.vite` 缓存并互相干扰；跨平台拷贝数据目录会失效 |
 | 静态预览限额 | `enforceMaxRunning` 只统计 `mode=server` | 静态预览不受 8 个上限约束，可能占满 4100–4999 端口池 |
 | 日志 | 文件不轮转；删除项目不删日志 | `.vercio/logs` 持续增长 |
@@ -442,4 +459,6 @@ devInstallPlan:
 - **JSON 文件而非 SQLite**：换来零依赖、易调试、可直接看文件，代价是无查询/事务/并发安全。
 - **302 而非代理**：换来实现简单与 HMR 正确，代价是端口暴露与跨源。
 - **SSE + 轮询混合**：SSE 负责“有变化”，轮询负责“正在构建”的高频日志/状态，减少 SSE 事件频率。
+- **tip 跟随而非固定快照**：换来“点开就是最新提交”，代价是每个运行中预览每 2s 一次 `rev-parse`，以及前滚瞬间的 HMR 抖动。
+- **多编辑源而非单一工作副本**：换来多会话/多 worktree 并行，代价是要接受“源消失→快照/断开”的降级语义，以及只镜像 `git status` 的局限。
 - **单文件路由链**：换来无框架、可读性强，代价是路由多了以后难维护；新增路由必须注意顺序。

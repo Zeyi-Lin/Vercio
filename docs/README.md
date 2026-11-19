@@ -24,7 +24,9 @@
 | [frontend.md](frontend.md) | React 结构、Provider、路由、数据流、页面/组件地图、i18n、主题、CSS、iframe 细节 | 改界面、交互、样式、前端数据获取 |
 | [data-model.md](data-model.md) | `db.json` schema、实体字段、DTO 投影、`.vercio/` 目录、排序/限额、删除语义、迁移 | 加字段、排查数据、改持久化 |
 | [development.md](development.md) | 环境、命令、测试架构、curl 验证、调试 recipe、代码约定、故障排查 | 本地跑起来、写测试、提交前 |
-| [ai-coding.md](ai-coding.md) | 改动地图、13 个典型任务配方、验证协议、15 个高频坑、Do Not、Done 清单 | **动第一行代码之前** |
+| [ai-coding.md](ai-coding.md) | 改动地图、13 个典型任务配方、验证协议、20 个高频坑、Do Not、Done 清单 | **动第一行代码之前** |
+| [live-preview-sources.md](live-preview-sources.md) | 实时预览的设计与改造记录：分支 tip + 编辑源、断源降级、依赖重启、阶段与取舍 | 改实时同步/预览生命周期前 |
+| [harness-preview-workflow.md](harness-preview-workflow.md) | 多个 coding agent 并行改分支时的 worktree 约定与提示词 | 给 agent 分会话、排查"预览不更新" |
 
 ## 30 秒掌握
 
@@ -34,6 +36,7 @@
 - **稳定预览 URL**：`/preview/<deploymentId>/<path>` 由主服务 302 到 `http://<请求的 Host>:<预览端口>/<path>`，保留路径；因此绝对路径资源、Vite HMR、静态构建产物都能工作。
 - **数据**：全部在本机 `.vercio/`（`db.json`、`repos/`、`worktrees/`、`deps/`、`logs/`）。没有数据库、没有云、没有登录。
 - **本地项目选择**：点「浏览」优先在**运行 Vercio 的机器**上弹出系统文件夹窗口；无图形界面/无对话框工具（5xx，504 超时除外）时回退到页面内目录浏览。
+- **实时预览**：每个预览跟随分支 tip，并从"检出该分支的任意 worktree"（主副本或 agent 的 worktree）镜像未提交改动；源消失只降级为快照，不会停预览。
 - **核心状态机**：`queued → preparing → [installing] → starting → ready`，任意阶段可失败为 `error`，运行中的可被 `stopped`；静态预览跳过 `installing/starting`（`preparing → ready`）。
 - **安全模型**：只面向本机与可信局域网。无鉴权、无 CSRF、无 TLS；预览会执行仓库里的代码。不要暴露公网。
 - **常用命令**：`npm run dev`（API 4000 + Vite 5173）、`npm run build && npm start`（生产单服务）、`npm test`、`npm run typecheck`。
@@ -47,7 +50,8 @@
 | Deployment | 一次“把某分支某 commit 跑起来”的尝试，有独立 id/端口/worktree/日志 | `DeploymentManager`，`state.deployments` |
 | Preview | 就绪的 deployment 对外呈现；通过 `/preview/<dpl_id>/` 访问 | `routes.js` + 预览端口 |
 | Production branch | 仓库默认分支（`origin/HEAD` 优先），UI 标记为 prod；diff 的基线 | `getDefaultBranch()` |
-| Worktree | 某 commit 的隔离检出目录，位于 `worktrees/<projectId>/<branchSlug>-<sha8>` | `git.addWorktree()` |
+| Worktree | 某 commit 的隔离检出目录，位于 `worktrees/<projectId>/<branchSlug>-<sha8>`，之后会随 tip 前滚 | `git.addWorktree()` / `checkoutWorktree()` |
+| Source（编辑源） | 当前检出某分支、实际被编辑的 worktree：主工作副本或 agent worktree；预览只读它 | `server/lib/sources.js` |
 | mode | 预览方式：`auto` / `server` / `static`；`requestedMode` 是请求值，`mode` 是解析后的值 | `DeploymentManager.create/run` |
 | fingerprint | `package.json + lockfile` 的 sha256 前 16 位，用于依赖缓存 | `frameworks.dependencyFingerprint()` |
 | Data dir | 运行数据根目录，默认 `<repo>/.vercio` | `config.resolveConfig()` |
@@ -60,7 +64,8 @@ Vercio/
 │   ├── index.js            # 组合根 createVercioApp / startServer / CLI / 优雅退出
 │   ├── routes.js           # 单函数请求处理器：预览重定向、SPA、全部 API
 │   └── lib/
-│       ├── deployments.js  # 部署引擎：worktree、依赖、进程、端口、日志
+│       ├── deployments.js  # 部署引擎：worktree、依赖、进程、端口、日志、实时跟随
+│       ├── sources.js      # 编辑源发现：git worktree list → branch → source
 │       ├── projects.js     # 项目导入/刷新/删除、demo 项目
 │       ├── git.js          # git 命令封装、分支解析、diff
 │       ├── frameworks.js   # 框架/包管理器识别、dev 命令

@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CornerDownRight,
-  MessageSquare,
-  RefreshCw,
-  Send,
-  StickyNote,
-  Trash2,
-  X,
-} from "lucide-react";
+import { MessageSquare, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import { initials, relativeTime } from "../lib/format";
-import { Link } from "../lib/router";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
-import type { Comment, Note, Project } from "../lib/types";
+import type { Comment, Project } from "../lib/types";
 import { useToast } from "./Toast";
 import { Button, EmptyState, Spinner, Skeleton } from "./ui";
 
@@ -32,13 +23,11 @@ function clientId(): string {
 export function CommentsPanel({
   project,
   branch,
-  notes,
   onClose,
   onCountChange,
 }: {
   project: Project;
   branch: string;
-  notes: Note[];
   onClose: () => void;
   onCountChange: (count: number) => void;
 }) {
@@ -107,8 +96,6 @@ export function CommentsPanel({
     }
   };
 
-  const linkedNotes = notes.filter((note) => note.branch === branch);
-
   return (
     <aside className="discussion-panel">
       <div className="discussion-head">
@@ -136,23 +123,6 @@ export function CommentsPanel({
           </button>
         </div>
       </div>
-
-      {linkedNotes.length > 0 && (
-        <div className="discussion-linked">
-          <span className="discussion-section-label">{t("discussion.linkedNotes")}</span>
-          {linkedNotes.map((note) => (
-            <Link
-              key={note.id}
-              to={"/p/" + project.id + "/notes?note=" + note.id}
-              className="linked-note"
-            >
-              <StickyNote size={12} />
-              <span className="truncate">{note.title}</span>
-              <CornerDownRight size={11} className="linked-note-arrow" />
-            </Link>
-          ))}
-        </div>
-      )}
 
       <div className="discussion-list">
         {comments === null &&

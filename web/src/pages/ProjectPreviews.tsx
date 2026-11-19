@@ -19,18 +19,12 @@ import { useT } from "../i18n";
 import { useInterval, useMediaQuery } from "../lib/hooks";
 import { relativeTime } from "../lib/format";
 import { frameworkLabel } from "../lib/framework";
-import { Link, useRouter } from "../lib/router";
-import type {
-  BranchChanges,
-  BranchList,
-  Deployment,
-  Note,
-  Project,
-} from "../lib/types";
+import type { BranchChanges, BranchList, Deployment, Project } from "../lib/types";
 import { useToast } from "../components/Toast";
 import { BranchPanel } from "../components/BranchPanel";
 import { BrowserFrame, isPendingStatus } from "../components/PreviewPane";
 import { CommentsPanel } from "../components/CommentsPanel";
+import { ProjectSettingsModal } from "../components/ProjectSettingsModal";
 import { Badge, Button, EmptyState, Skeleton, StatusPill } from "../components/ui";
 
 type Device = "desktop" | "tablet" | "mobile";
@@ -53,7 +47,6 @@ export function ProjectPreviews({
   repoRefreshing?: boolean;
 }) {
   const { openModal } = useApp();
-  const { navigate } = useRouter();
   const { pushToast } = useToast();
   const t = useT();
   const [data, setData] = useState<BranchList | null>(null);
@@ -70,8 +63,8 @@ export function ProjectPreviews({
   const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [changes, setChanges] = useState<BranchChanges | null>(null);
-  const [notes, setNotes] = useState<Note[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pinnedBranches, setPinnedBranches] = useState<string[]>(
     project.pinnedBranches ?? []
   );
@@ -324,13 +317,6 @@ export function ProjectPreviews({
       cancelled = true;
     };
   }, [project.id, selected]);
-
-  useEffect(() => {
-    api
-      .notes(project.id)
-      .then((result) => setNotes(result.notes))
-      .catch(() => {});
-  }, [project.id]);
 
   const primaryDeployment = deployments[selected] || null;
   const compareDeployment = compareBranch ? deployments[compareBranch] || null : null;
@@ -675,22 +661,6 @@ export function ProjectPreviews({
                   <GitCompare size={13} />
                   {t("preview.compare")}
                 </button>
-                <Link
-                  to={"/p/" + project.id + "/overview"}
-                  className="toolbar-menu-item"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  {t("project.tab.overview")}
-                </Link>
-                <Link
-                  to={"/p/" + project.id + "/notes"}
-                  className="toolbar-menu-item"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  {t("project.tab.notes")}
-                </Link>
                 <button
                   type="button"
                   className="toolbar-menu-item"
@@ -829,7 +799,7 @@ export function ProjectPreviews({
               variant="secondary"
               className="toolbar-btn"
               icon={<Settings size={13} />}
-              onClick={() => navigate("/p/" + project.id + "/settings")}
+              onClick={() => setSettingsOpen(true)}
             >
               {t("preview.settings")}
             </Button>
@@ -980,11 +950,16 @@ export function ProjectPreviews({
         <CommentsPanel
           project={project}
           branch={selected}
-          notes={notes}
           onClose={() => setShowComments(false)}
           onCountChange={setCommentCount}
         />
       )}
+
+      <ProjectSettingsModal
+        project={project}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }

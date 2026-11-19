@@ -288,8 +288,8 @@ export function Dashboard() {
           </span>
         </div>
         <div className="stat">
-          <span className="stat-label">{t("dashboard.stats.notes")}</span>
-          <span className="stat-value">{(stats?.notes ?? 0) + (stats?.comments ?? 0)}</span>
+          <span className="stat-label">{t("dashboard.stats.discussions")}</span>
+          <span className="stat-value">{stats?.comments ?? 0}</span>
         </div>
       </div>
 

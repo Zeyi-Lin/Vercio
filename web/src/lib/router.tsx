@@ -71,15 +71,6 @@ export function Link({ to, replace, onClick, children, ...rest }: LinkProps) {
   );
 }
 
-export const PROJECT_TABS = ["overview", "previews", "notes", "settings"] as const;
-export type ProjectTab = (typeof PROJECT_TABS)[number];
-
-export function normalizeProjectTab(tab?: string): ProjectTab {
-  return tab && (PROJECT_TABS as readonly string[]).includes(tab)
-    ? (tab as ProjectTab)
-    : "previews";
-}
-
 export interface RouteMatch {
   page: "dashboard" | "project" | "notfound";
   projectId?: string;

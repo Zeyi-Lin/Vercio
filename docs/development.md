@@ -173,14 +173,13 @@ curl -sL "$BASE/preview/<dpl>/" | head
 2. 空状态 → Load demo → 进入项目 Previews。
 3. 切分支：首次出现构建步骤/日志，最终 iframe 显示页面。
 4. Compare：选另一个分支，两 pane 独立；切 device；stop 一个预览。
-5. Discussion：发评论、删除自己的评论、关联笔记跳转。
-6. Notes：新建、自动保存、切分支关联、pin、删除、刷新后仍在。
-7. Overview：编辑 brief 保存；README 展开；git refresh。
-8. Settings：改名称/标语/链接、删除项目（输入名称确认）。
-9. 顶栏：Share 二维码/LAN 地址；头像 → 本地资料里 EN/中文、亮/暗，刷新后保持。
-10. 添加项目：本地 tab 点「浏览」应弹出**主机**的系统文件夹窗口；取消不报错；无 GUI 环境应回退页内浏览器。
-11. 手机宽度（DevTools）走一遍 Dashboard/Previews；确认无横向溢出。
-12. 浏览器 console 无报错；Network 里无失败的 API。
+5. Discussion：发评论、删除自己的评论。
+6. 工具栏「设置」：改名称/标语并保存，顶栏名称同步；删除项目（输入名称确认）回到 Dashboard。
+7. 旧深链 `/p/<id>/overview`、`/notes`、`/settings` 应重定向到 `/previews`，页面只有工作区、没有 tabs。
+8. 顶栏：Share 二维码/LAN 地址；头像 → 本地资料里 EN/中文、亮/暗，刷新后保持。
+9. 添加项目：本地 tab 点「浏览」应弹出**主机**的系统文件夹窗口；取消不报错；无 GUI 环境应回退页内浏览器。
+10. 手机宽度（DevTools）走一遍 Dashboard/Previews；确认无横向溢出。
+11. 浏览器 console 无报错；Network 里无失败的 API。
 
 ### 7.3 预览链路专项
 

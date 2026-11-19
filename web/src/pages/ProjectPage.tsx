@@ -1,56 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  AlertCircle,
-  ArrowLeft,
-  GitBranch,
-  Loader2,
-  Play,
-  RefreshCw,
-  Share2,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
-import { Link, normalizeProjectTab, useRouter } from "../lib/router";
-import { relativeTime, truncateMiddle } from "../lib/format";
+import { Link, useRouter } from "../lib/router";
 import type { ProjectDetail } from "../lib/types";
 import { useToast } from "../components/Toast";
-import { ProjectMark } from "../components/ProjectCard";
-import { GithubIcon } from "../components/icons";
-import { Badge, Button, Skeleton } from "../components/ui";
-import { ProjectOverview } from "./ProjectOverview";
+import { Button, Skeleton } from "../components/ui";
 import { ProjectPreviews } from "./ProjectPreviews";
-import { ProjectNotes } from "./ProjectNotes";
-import { ProjectSettings } from "./ProjectSettings";
-
-const TABS = [
-  { id: "overview", labelKey: "project.tab.overview" },
-  { id: "previews", labelKey: "project.tab.previews" },
-  { id: "notes", labelKey: "project.tab.notes" },
-  { id: "settings", labelKey: "project.tab.settings" },
-] as const;
-
-function ProjectSkeleton() {
-  return (
-    <div className="container project-page">
-      <div className="project-head">
-        <div className="project-head-row">
-          <Skeleton width={44} height={44} style={{ borderRadius: 11 }} />
-          <div style={{ flex: 1 }}>
-            <Skeleton width={180} height={26} />
-            <Skeleton width={320} height={14} style={{ marginTop: 10 }} />
-          </div>
-        </div>
-      </div>
-      <div className="project-content">
-        <div className="project-loading-panels">
-          <Skeleton height={120} />
-          <Skeleton height={320} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function WorkspaceSkeleton() {
   return (
@@ -92,13 +49,19 @@ function WorkspaceSkeleton() {
 }
 
 export function ProjectPage({ projectId, tab }: { projectId: string; tab: string }) {
-  const { overview, openModal, refresh: refreshApp } = useApp();
+  const { overview, refresh: refreshApp } = useApp();
   const { navigate } = useRouter();
   const { pushToast } = useToast();
   const t = useT();
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+
+  // Overview / notes / settings pages no longer exist: send their old deep
+  // links to the single preview workspace.
+  useEffect(() => {
+    if (tab !== "previews") navigate("/p/" + projectId + "/previews", { replace: true });
+  }, [navigate, projectId, tab]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -110,7 +73,7 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
         if (!silent) setError(loadError instanceof Error ? loadError.message : t("project.notFound"));
       }
     },
-    [projectId]
+    [projectId, t]
   );
 
   useEffect(() => {
@@ -128,8 +91,6 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   }, [projectId, load]);
 
   const project = detail?.project || overview?.projects.find((item) => item.id === projectId) || null;
-  const activeTab = normalizeProjectTab(tab);
-  const workspace = activeTab === "previews";
 
   const refreshRepo = async () => {
     setRefreshing(true);
@@ -149,34 +110,26 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
   };
 
   if (error && !project) {
-    const notFound = (
-      <div className="project-error-state">
-        <span className="empty-icon"><AlertCircle size={20} /></span>
-        <h1>{t("project.notFound")}</h1>
-        <p className="muted">{error}</p>
-        <Link to="/" className="btn btn-secondary btn-sm" style={{ marginTop: 18 }}>
-          <ArrowLeft size={13} /> {t("project.backToProjects")}
-        </Link>
-      </div>
-    );
-    return workspace ? (
+    return (
       <div className="project-workspace">
-        <div className="workspace-state">{notFound}</div>
+        <div className="workspace-state">
+          <div className="project-error-state">
+            <span className="empty-icon"><AlertCircle size={20} /></span>
+            <h1>{t("project.notFound")}</h1>
+            <p className="muted">{error}</p>
+            <Link to="/" className="btn btn-secondary btn-sm" style={{ marginTop: 18 }}>
+              <ArrowLeft size={13} /> {t("project.backToProjects")}
+            </Link>
+          </div>
+        </div>
       </div>
-    ) : (
-      <div className="container page project-page">{notFound}</div>
     );
   }
 
-  if (!project) return workspace ? <WorkspaceSkeleton /> : <ProjectSkeleton />;
+  if (!project) return <WorkspaceSkeleton />;
 
   const importing = project.status === "importing";
   const importFailed = project.status === "error";
-  const sourceLabel = project.isDemo
-    ? t("project.demoRepository")
-    : project.source.url
-      ? project.source.url.replace(/^https?:\/\//, "")
-      : truncateMiddle(project.repoPath, 46);
 
   const importState = importing ? (
     <div className="import-state">
@@ -215,146 +168,23 @@ export function ProjectPage({ projectId, tab }: { projectId: string; tab: string
     </div>
   ) : null;
 
-  if (workspace) {
-    if (importing || importFailed) {
-      return (
-        <div className="project-workspace">
-          <div className="workspace-state">
-            {importState}
-          </div>
-        </div>
-      );
-    }
-    if (!detail) return <WorkspaceSkeleton />;
+  if (importing || importFailed) {
     return (
       <div className="project-workspace">
-        <ProjectPreviews
-          project={project}
-          onRefreshRepo={refreshRepo}
-          repoRefreshing={refreshing}
-        />
+        <div className="workspace-state">{importState}</div>
       </div>
     );
   }
 
+  if (!detail) return <WorkspaceSkeleton />;
+
   return (
-    <div className="container project-page">
-      <header className="project-head">
-        <div className="project-head-row">
-          <ProjectMark name={project.name} size="lg" />
-          <div className="project-head-text">
-            <div className="project-title-line">
-              <h1>{project.name}</h1>
-              {project.isDemo && <Badge tone="blue">{t("project.demo")}</Badge>}
-              {importing && <Badge tone="amber">{t("project.importing")}</Badge>}
-              {importFailed && <Badge tone="amber">{t("project.importFailed")}</Badge>}
-            </div>
-            <p className="project-head-tagline">
-              {project.tagline || t("project.taglinePlaceholder")}
-            </p>
-          </div>
-          <div className="project-actions">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<RefreshCw size={13} className={refreshing ? "spin" : ""} />}
-              onClick={refreshRepo}
-              disabled={importing || importFailed || refreshing}
-            >
-              {t("project.refresh")}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Share2 size={13} />}
-              onClick={() => openModal("share")}
-            >
-              {t("project.share")}
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<Play size={13} />}
-              onClick={() =>
-                navigate("/p/" + project.id + "/previews?branch=" + encodeURIComponent(project.defaultBranch))
-              }
-              disabled={importing || importFailed}
-            >
-              {t("project.preview")}
-            </Button>
-          </div>
-        </div>
-
-        <div className="project-meta-row">
-          <span className="meta-item meta-source">
-            {project.source.url ? <GithubIcon size={13} /> : <GitBranch size={13} />}
-            {project.source.url ? (
-              <a href={project.source.url} target="_blank" rel="noreferrer" className="meta-link">
-                {sourceLabel}
-              </a>
-            ) : (
-              <span className="mono">{sourceLabel}</span>
-            )}
-          </span>
-          <span className="dot-sep">·</span>
-          <span className="meta-item"><GitBranch size={12} /> {t("project.branches", { count: project.branchCount || 0 })}</span>
-          <span className="dot-sep">·</span>
-          <span className="meta-item">{t("project.default")} <span className="mono">{project.defaultBranch}</span></span>
-          {project.dirtyCount > 0 && (
-            <>
-              <span className="dot-sep">·</span>
-              <span className="meta-item meta-warn">
-                {t("project.uncommitted", { count: project.dirtyCount })}
-              </span>
-            </>
-          )}
-          <span className="meta-spacer" />
-          {project.latestCommit && (
-            <span className="meta-item meta-commit truncate">
-              <span className="mono muted">{project.latestCommit.shortSha}</span>
-              {project.latestCommit.message}
-              <span className="dot-sep">·</span>
-              {relativeTime(project.latestCommit.date)}
-            </span>
-          )}
-        </div>
-
-        <nav className="tabs project-tabs" aria-label={t("project.sectionsAria")}>
-          {TABS.map((item) => (
-            <Link
-              key={item.id}
-              to={"/p/" + project.id + "/" + item.id}
-              className={"tab" + (activeTab === item.id ? " tab-active" : "")}
-            >
-              {t(item.labelKey)}
-            </Link>
-          ))}
-        </nav>
-      </header>
-
-      {importing && <div className="project-state card">{importState}</div>}
-      {importFailed && <div className="project-state card">{importState}</div>}
-
-      {!importing && !importFailed && detail && (
-        <div className="project-content">
-          {activeTab === "overview" && (
-            <ProjectOverview detail={detail} onReload={() => load(true)} />
-          )}
-          {activeTab === "notes" && (
-            <ProjectNotes project={project} />
-          )}
-          {activeTab === "settings" && (
-            <ProjectSettings
-              project={project}
-              onReload={() => load(true)}
-              onDeleted={() => {
-                refreshApp();
-                navigate("/");
-              }}
-            />
-          )}
-        </div>
-      )}
+    <div className="project-workspace">
+      <ProjectPreviews
+        project={project}
+        onRefreshRepo={refreshRepo}
+        repoRefreshing={refreshing}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, GitBranch, GitFork, Search, Wifi } from "lucide-react";
-import { Link, matchRoute, normalizeProjectTab, useRouter } from "../lib/router";
+import { Link, matchRoute, useRouter } from "../lib/router";
 import { initials } from "../lib/format";
 import { useApp } from "../context/AppContext";
 import { useT } from "../i18n";
@@ -20,7 +20,6 @@ export function TopNav() {
       : null;
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchRef = useRef<HTMLDivElement | null>(null);
-  const projectTab = normalizeProjectTab(route.tab);
 
   useEffect(() => {
     setSwitchOpen(false);
@@ -87,7 +86,7 @@ export function TopNav() {
                         return (
                           <Link
                             key={item.id}
-                            to={"/p/" + item.id + "/" + projectTab}
+                            to={"/p/" + item.id + "/previews"}
                             className={"project-switch-item" + (current ? " is-current" : "")}
                             role="menuitem"
                             aria-current={current ? "page" : undefined}

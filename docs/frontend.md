@@ -26,11 +26,8 @@ web/src/
 ├── App.tsx           # Provider 组合、路由、全局快捷键、全局模态框
 ├── pages/
 │   ├── Dashboard.tsx
-│   ├── ProjectPage.tsx       # 项目壳：默认 tab 全屏工作区；其余 tab 头部 + tab
-│   ├── ProjectOverview.tsx   # brief + README + 仓库信息
+│   ├── ProjectPage.tsx       # 项目壳：全屏分支预览工作区
 │   ├── ProjectPreviews.tsx   # 分支预览/对比/讨论总控
-│   ├── ProjectNotes.tsx
-│   ├── ProjectSettings.tsx
 │   └── NotFound.tsx
 ├── components/
 │   ├── ui.tsx                # Button/Modal/StatusPill/... 原子组件
@@ -44,6 +41,7 @@ web/src/
 │   ├── ProjectCard.tsx, DeploymentList.tsx
 │   ├── BranchPanel.tsx
 │   ├── PreviewPane.tsx       # PreviewState + BrowserFrame
+│   ├── ProjectSettingsModal.tsx  # 项目名/标语/删除项目的弹窗
 │   ├── CommentsPanel.tsx
 │   ├── Markdown.tsx, TerminalLog.tsx
 │   └── ...
@@ -89,7 +87,7 @@ RouterProvider
 `AppShell` 职责：
 
 - 渲染 `TopNav`、`<main><AppRoutes/></main>`、`Footer`。
-- 根据 `matchRoute(path)` 判定「项目工作区」路由（`/p/:id` 或 `/p/:id/previews`）：这类路由给 shell 加 `app-shell-workspace`，隐藏 `Footer`，`<main>` 高度锁定为视口减去顶栏，工作区自己吞掉滚动；其他路由保持普通文档流。
+- 根据 `matchRoute(path)` 判定「项目工作区」路由（所有 `/p/:id...`）：这类路由给 shell 加 `app-shell-workspace`，隐藏 `Footer`，`<main>` 高度锁定为视口减去顶栏，工作区自己吞掉滚动；其他路由保持普通文档流。
 - 挂载四个全局模态框：`ShareModal`、`AddProjectModal`、`ProfileModal`、`CommandPalette`。
 - 全局快捷键：
   - `Cmd/Ctrl+K`：打开/关闭命令面板；
@@ -103,18 +101,15 @@ RouterProvider
 | 路径 | 页面 | 说明 |
 | --- | --- | --- |
 | `/` | Dashboard | 空状态引导或项目工作台 |
-| `/p/:projectId` | ProjectPage | tab 缺省为 `previews`，渲染全屏预览工作区 |
-| `/p/:projectId/overview` | ProjectPage | brief + README（沿用项目头部 + tabs） |
-| `/p/:projectId/previews` | ProjectPage | 全屏分支预览工作区（默认） |
-| `/p/:projectId/notes` | ProjectPage | 笔记 |
-| `/p/:projectId/settings` | ProjectPage | 项目设置 |
+| `/p/:projectId` | ProjectPage | 全屏分支预览工作区（默认） |
+| `/p/:projectId/previews` | ProjectPage | 同上（可直接分享） |
+| `/p/:projectId/overview` 等旧路径 | ProjectPage | 重定向到 `/p/:projectId/previews`（replace） |
 | 其他 | NotFound | |
 
-- `matchRoute` 接受任意 tab 字符串；`ProjectPage` 用 `TABS` 校验，非法值回退 `previews`。
+- 项目只有一个界面：概览 / 笔记 / 设置页已移除；`ProjectPage` 不再渲染项目头部和 tab 条，项目上下文由 `TopNav` 展示，项目信息/删除通过工具栏「设置」弹窗完成。
 - 查询参数：
   - `previews?branch=<name>&compare=<name>`：初始分支与对比分支；选中变化后用 `history.replaceState` 同步 URL。
-  - `notes?note=<id>`：初始打开的笔记；切换笔记后同样 `replaceState`。
-- 这些 `replaceState` 不经过 Router，所以 Router 的 `path/query` 不会立刻更新；由于只改 query、path 不变，路由匹配不受影响。但浏览器后退到不同 query 时，页面不会重新读取 query（`ProjectPreviews`/`ProjectNotes` 只在挂载时读一次）。
+- 这些 `replaceState` 不经过 Router，所以 Router 的 `path/query` 不会立刻更新；由于只改 query、path 不变，路由匹配不受影响。但浏览器后退到不同 query 时，页面不会重新读取 query（`ProjectPreviews` 只在挂载时读一次）。
 - `Link` 只拦截普通左键（无 meta/ctrl/shift、button=0）；`target=_blank` 等场景用原生 `<a>`。
 
 ## 5. 数据流
@@ -129,9 +124,7 @@ AppContext（全局）
 
 页面局部 state（各自 fetch）
   ├─ ProjectPage: GET /api/projects/:id
-  ├─ ProjectOverview: /readme, /notes
-  ├─ ProjectPreviews: /branches, /deployments, /logs, /changes, /comments, /notes
-  ├─ ProjectNotes: /notes, /branches
+  ├─ ProjectPreviews: /branches, /deployments, /logs, /changes, /comments
   └─ CommentsPanel: /comments
 
 高频轮询
@@ -173,10 +166,8 @@ EventSource 自动重连；服务端的 `hello` 没有监听，也没有断线�
 
 - `ProjectPage`：挂载时 `api.project`；监听 `vercio:event`，事件带 `projectId` 且匹配（或没有 projectId）时静默 reload。
 - `ProjectPreviews`：监听事件 → `loadBranches(true)`；部署状态另有自己的轮询。
-- `ProjectNotes`：监听事件 → 重拉 notes 列表（不覆盖正在编辑的 draft）。
 - `CommentsPanel`：监听**所有** `vercio:event` → 重拉当前分支评论（没有过滤项目/分支，属于低效但安全）。
-- `ProjectOverview` 不监听事件；刷新依赖进入页面或父级 reload。
-- `ProjectSettings` 不监听事件；保存后手动 `onReload`。
+- `ProjectSettingsModal` 不监听事件；保存后服务端广播 `project.updated`，由上面的刷新链路更新项目名。
 
 ### 5.5 部署状态管理（ProjectPreviews）
 
@@ -191,7 +182,7 @@ logs: Record<deploymentId, string>
 reloads: Record<branch, number>
 changes: BranchChanges | null
 commentCount: number
-notes: Note[]（给讨论面板的关联笔记）
+restarting: { branch, deploymentId } | null（重启中的预览，成功后收起）
 focus: boolean（浏览器视口内的沉浸预览模式）
 inflight: ref<Set<branch>>（防重复请求）
 ```
@@ -221,16 +212,6 @@ inflight: ref<Set<branch>>（防重复请求）
 
 分支列表里，`following` 的分支显示"实时"、`detached` 显示"已断开"；有编辑源但还没启动预览的分支显示"编辑中"（来自 `/branches` 响应的 `sources`，不含路径）。
 
-### 5.6 笔记保存
-
-`ProjectNotes` 用 `draft`（title/body/tags 字符串/pinned/branch）驱动编辑：
-
-- 切换选中笔记、创建笔记时把 `skipNextSave` 置 true，避免刚加载就保存。
-- `draft` 变化后 700ms 防抖 PATCH；`Cmd/Ctrl+S` 立即保存。
-- 保存状态 `idle/saving/saved/error` 显示在编辑器顶部。
-- SSE 只更新左侧列表，不会把远端变更合并进当前 draft（避免覆盖输入）。
-- 标签输入是逗号分隔字符串，提交时 split/trim/限 8。
-
 ## 6. API 客户端
 
 `web/src/lib/api.ts`：
@@ -255,48 +236,31 @@ inflight: ref<Set<branch>>（防重复请求）
 
 ### ProjectPage（`pages/ProjectPage.tsx`）
 
-两种布局，由 `activeTab` 决定：
-
-- **`previews`（默认）**：全屏工作区 `.project-workspace`，不再渲染项目头部、tagline、操作按钮和 tab 条。直接渲染 `ProjectPreviews`；项目上下文（mark、名称、仓库路径、分支数、默认分支、未提交警告）由 `TopNav` 展示。加载/导入中/导入失败/未找到各自有工作区内的状态位。
-- **`overview` / `notes` / `settings`**：沿用旧的项目头部（mark、名称、tagline、Refresh/Share/Preview、元信息、tabs）+ `container` 页面布局；tabs 仍可切回预览。
-
-- 项目详情由本页加载，tab 子页面通过 props 拿 `project`。
-- `importing`：状态卡（无日志，只有 spinner）；`error`：错误 + 重试导入。
-- 「刷新仓库」入口：工作区里在左侧分支栏底部的 `…` 菜单中（`onRefreshRepo` 传回本页）；其他 tab 仍在头部按钮。
-
-### ProjectOverview（`pages/ProjectOverview.tsx`）
-
-- Product brief：Markdown 预览 / textarea 编辑（显式 Save，PATCH description）。
-- README：`GET /readme`，默认截断，可展开；用 `Markdown` 渲染。
-- 右侧：仓库信息（来源/默认分支/分支数/路径/最新提交/脏文件）、部署列表（前 5）、笔记（前 4）、ShareCard。
-- 存在刷新按钮（调用 `refreshProject` + 父级 reload）。
+- 全屏工作区 `.project-workspace`，不渲染项目头部、tagline、操作按钮和 tab 条；直接渲染 `ProjectPreviews`。项目上下文（mark、名称、仓库路径、分支数、默认分支、未提交警告）由 `TopNav` 展示。
+- 旧的 `/overview`、`/notes`、`/settings` 深链在挂载时用 `replace` 跳到 `/previews`。
+- 项目详情由本页加载，加载/导入中/导入失败/未找到各自有工作区内的状态位。
+- 「刷新仓库」入口：左侧分支栏底部的 `…` 菜单（`onRefreshRepo` 传回本页）。
 
 ### ProjectPreviews（`pages/ProjectPreviews.tsx`）
 
 全屏两栏（`.previews`，`grid-template-columns: 200px 1fr`，无卡片边框/圆角，高度吃满 `.project-workspace`）：
 
-- 左 `BranchPanel`：分支标题 + 计数 + 收起/刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
+- 左 `BranchPanel`：分支标题 + 计数 + 收起/刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、刷新仓库）。
 - 右键分支卡弹出上下文菜单：复制分支名 / 置顶 / 取消置顶（`Project.pinnedBranches`，可置顶多个）。置顶分支按置顶顺序排在列表最前，每项显示 pin 图标，并用一条 `.branch-list-divider` 与其余分支分隔；动作乐观更新并 PATCH `/api/projects/:id` 的 `pinnedBranches` 数组，失败回滚 + toast。底部提示被窄栏截断时，完整文案放在 `title` tooltip 里。
 - 分支栏可折叠成 44px 竖排窄条（`.previews-branches-collapsed`，只留展开/刷新按钮与分支数）；折叠状态存 `localStorage` 的 `vercio:branch-panel-collapsed`，≤860px 堆叠布局下强制展开并隐藏收起按钮。
 - 中 `preview-stage`：工具栏（分支名/状态/实时或快照徽标/mode/prod 标签 + 设备切换 + 停止预览/重启预览 + Discussion + Settings）、断源 banner、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、部署 id、「分享预览」分支局域网链接）。停止/重启只在当前分支部署 `ready` 时可用（重启期间保持禁用并显示「重启中…」）。
-- 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
+- 「设置」按钮打开 `ProjectSettingsModal` 弹窗（项目名、标语、删除项目），不再跳转页面。
 - 点击分支只切换视图；未运行的分支显示 idle 状态和「启动预览」按钮，不弹确认框。任何自动路径都不会 POST deploy。
 - 浏览器框右上角有「全屏预览」按钮：给 `.preview-frame-wrap` 加 `.is-focus`（`position: fixed; inset: 0`），只铺满**浏览器视口**，浏览器标签页和地址栏仍可见（不调用原生 Fullscreen API，不会占满显示器）。进入后只显示 iframe 页面，底部居中浮层为两颗胶囊：`刷新` 与 `退出全屏 Esc`；父页面监听 `keydown` 处理 Esc（点击 iframe 内部后焦点进入跨源文档、Esc 不再冒泡，此时用浮层按钮退出）。预览状态变为非 ready 时自动退出。
 - 设备切换在 compare 时禁用；compare 的第二个 pane 用 `<select>` 选分支；未运行的分支在 pane 里直接给「启动预览」按钮。
 - 讨论面板（`previews-with-discussion`）展开为第三栏，打开时隐藏 compare 与底部左侧提交信息。
 - 空分支/加载/错误各有独立状态；宽度 ≤860px 时工作区改为上下堆叠并允许页面滚动。
 
-### ProjectNotes（`pages/ProjectNotes.tsx`）
+### ProjectSettingsModal（`components/ProjectSettingsModal.tsx`）
 
-- 左：搜索、笔记列表（置顶、摘要、分支、相对时间）、新建。
-- 右：标题、pin、删除、保存状态、字数、编辑时间、分支关联、Write/Preview 切换、标签、正文。
-- 删除有 ConfirmDialog；空列表有空状态。
-
-### ProjectSettings（`pages/ProjectSettings.tsx`）
-
-- 项目详情（name/tagline/links）、仓库信息（来源/路径/默认/当前/脏文件）、本地资料（displayName，全局 settings）、危险区（输入项目名确认删除）。
-- 右侧：ShareCard + 工作台信息（网络地址、数据目录、版本、最大预览数、复制链接）。
-- 删除时对本地路径项目传 `deleteRepo=false`。
+- 工具栏「设置」打开，`Modal` + 两个字段：项目名称、标语（PATCH `/api/projects/:id`），保存后 toast 并关闭；服务端广播 `project.updated` 刷新顶栏/卡片。
+- 底部危险区「删除项目」：`ConfirmDialog` 需要输入项目名确认，本地路径项目传 `deleteRepo=false`；删除成功后整页跳回 Dashboard。
+- 仓库信息、README、Product brief、链接编辑、本地资料、工作台信息等原设置页内容不再出现在 UI 中；对应 API 保留。
 
 ### NotFound
 
@@ -318,7 +282,7 @@ inflight: ref<Set<branch>>（防重复请求）
 | --- | --- | --- |
 | `ui.tsx` | Button/Spinner/StatusPill/Badge/Modal/ConfirmDialog/Field/TextInput/TextArea/Skeleton/CopyButton/EmptyState/Kbd | `Modal` 用 portal、Escape、锁 body 滚动；无 focus trap；`ConfirmDialog` 可要求输入确认文本；`StatusPill` 依赖 `format.statusTone` 与 `status.*` 文案 |
 | `Toast.tsx` | 全局 toast | 最多保留 4 条；error 6.5s，其余 3.8s；`useToast().pushToast` |
-| `TopNav.tsx` | 顶栏 | 搜索入口、Share、头像（语言/主题在「本地资料」弹窗里）；项目路由下显示 `项目 ›` + 项目 mark/名称/仓库路径/分支数/默认分支/未提交警告（窄屏逐级隐藏，数据来自 overview 里的 Project）；点项目名称弹出切换菜单（列出所有项目，保留当前 tab，Escape/外部点击关闭）；Dashboard 只显示「项目」 |
+| `TopNav.tsx` | 顶栏 | 搜索入口、Share、头像（语言/主题在「本地资料」弹窗里）；项目路由下显示 `项目 ›` + 项目 mark/名称/仓库路径/分支数/默认分支/未提交警告（窄屏逐级隐藏，数据来自 overview 里的 Project）；点项目名称弹出切换菜单（列出所有项目，跳转到对应预览工作区，Escape/外部点击关闭）；Dashboard 只显示「项目」 |
 | `CommandPalette.tsx` | 命令面板 | 项目跳转 + 添加/演示/分享/复制地址/刷新；↑↓/Enter/Esc；分组 |
 | `AddProjectModal.tsx` | 添加项目 | GitHub/本地两个 tab；「浏览」先调系统文件夹窗口，成功填入路径；5xx（504 除外）时 toast 并回退到页内目录选择器；创建后跳项目页 |
 | `DirectoryPickerModal.tsx` | 页内目录选择器（系统窗口回退） | 只列目录、Git 标记、面包屑、快捷根、显示隐藏、请求序号防竞态；Escape 捕获阶段 `stopImmediatePropagation` 避免连带关闭父模态框；只能选 Git 仓库 |
@@ -330,7 +294,8 @@ inflight: ref<Set<branch>>（防重复请求）
 | `DeploymentList.tsx` | 部署列表 | 表格与紧凑两种；链接到 `?branch=` |
 | `BranchPanel.tsx` | 分支列表 | 过滤 name/subject/author；每分支部署状态（实时/快照/已断开/编辑中）；prod 标签 |
 | `PreviewPane.tsx` | 预览核心 | `PENDING_STATUSES`/`isPendingStatus`、`PreviewState`（构建步骤/错误/停止/日志）、`BrowserFrame`（设备框、iframe、复制、新标签、刷新） |
-| `CommentsPanel.tsx` | 分支讨论 | 关联笔记（`note.branch === branch`）、发评论、仅删除自己 client 的评论、Cmd/Ctrl+Enter |
+| `ProjectSettingsModal.tsx` | 项目设置弹窗 | 名称/标语保存、删除项目确认；无独立设置路由 |
+| `CommentsPanel.tsx` | 分支讨论 | 发评论、仅删除自己 client 的评论、Cmd/Ctrl+Enter |
 | `Markdown.tsx` | Markdown 渲染 | memo + `renderMarkdown` |
 | `TerminalLog.tsx` | 日志 | 自动滚到底、行数统计 |
 | `Logo.tsx` / `icons.tsx` | 品牌/图标 | 内联 SVG |
@@ -342,7 +307,7 @@ inflight: ref<Set<branch>>（防重复请求）
 - 语言检测：`localStorage("vercio:language")` → 浏览器语言以 `zh` 开头则中文，否则英文。
 - 切换语言会更新 `<html lang>` 和 `document.title`；页面内 `document.title` 没有按路由定制（`useDocumentTitle` 未被使用）。
 - `format.ts` 的相对时间/日期通过 `setFormatLocale` 跟随语言；不是 React 响应式，语言切换后由重渲染更新。
-- 项目内容（分支名、README、brief、笔记、评论、错误详情）不翻译。
+- 项目内容（分支名、评论、错误详情、仓库路径等）不翻译。
 - **新增固定文案**：加到 `en` 与 `zh` 同一位置附近，命名 `domain.camelCase`；在组件里用 `useT()`；跑 `npm run typecheck`。系统文件夹窗口相关文案在 `add.*`（`add.openingDialog`、`add.browseHint`、`add.pickPrompt`、`add.dialogFallback`、`add.dialogTimeout` 等）。
 - 新增语言：扩展 `Language` 类型、`translations` 映射、`LanguageSwitcher`，并提供完整字典；`Record` 会强制完整性。
 
@@ -361,7 +326,7 @@ inflight: ref<Set<branch>>（防重复请求）
 | --- | --- |
 | `base.css` | `:root` 设计变量（颜色/圆角/字体/阴影/缓动）、reset、排版、`.container`、`.prose`、滚动条、动画 |
 | `components.css` | 顶栏、按钮、卡片、badge、status、modal、toast、palette、部署列表等跨页面组件 |
-| `pages.css` | Dashboard、项目页、预览器、笔记、设置、响应式；约 3600 行，是主要布局文件 |
+| `pages.css` | Dashboard、项目页、预览器、弹窗与响应式；约 3600 行，是主要布局文件 |
 | `theme-light.css` | 亮色变量与逐组件覆盖 |
 
 约定：
@@ -389,8 +354,8 @@ marked.setOptions({ gfm: true, breaks: false });
 renderMarkdown = (src) => DOMPurify.sanitize(marked.parse(src), { ADD_ATTR: ["target", "rel"] });
 ```
 
-- 所有最终渲染为 HTML 的用户内容（brief、README、笔记）都在渲染前经过 DOMPurify；`Markdown` 组件用 `dangerouslySetInnerHTML`。
-- 评论是纯文本 `{comment.body}`，不渲染 Markdown；笔记预览与 brief/README 渲染 Markdown。
+- 当前 UI 没有渲染 Markdown 的入口（Overview/Notes 已移除）；`Markdown.tsx` 与 `lib/markdown.ts` 保留给后续功能，服务端 `/readme` 与笔记 API 仍在。
+- 评论是纯文本 `{comment.body}`，不渲染 Markdown。
 - `marked` 默认不生成 `target`，`ADD_ATTR` 只是允许作者写 HTML 时保留；没有强制外链 `rel="noreferrer"`。若要加固，在 `renderMarkdown` 后处理链接。
 - 服务端不渲染 Markdown，因此不存在服务端模板注入（状态页除外，见架构文档）。
 
@@ -407,15 +372,15 @@ renderMarkdown = (src) => DOMPurify.sanitize(marked.parse(src), { ADD_ATTR: ["ta
 - **不自动启动本地服务**：分支点击、初始加载、深链 `?branch=`/`?compare=`、切换 compare 分支都只切换视图，不弹确认框、不 POST deploy；启动只能通过显式的「启动预览」/「重试预览」按钮。分支已有 ready/pending 部署时直接复用，不算启动。
 - **分支分享**：预览页底部的「分享预览」调用 `openModal("share", { projectId, branch })`；`ShareModal` 用 `systemInfo.primaryUrl + /p/:id/previews?branch=<encodeURIComponent(branch)>` 生成局域网链接，LAN 地址行和「本机」行都带同样的分支路径；分支模式不显示二维码（二维码只编码工作台地址）。关掉模态框会清空 `shareTarget`，顶部 Share 仍是工作台分享。
 - **全屏预览**：`focus` 状态给包装层加 `.is-focus`，`position: fixed; inset: 0` 只覆盖浏览器视口，标签栏/地址栏保留；不调用原生 Fullscreen API。Esc 由父页面 `keydown` 处理；iframe 跨源，焦点进入预览后键盘事件不冒泡，此时用底部浮层按钮退出；预览非 ready 时自动退出。
-- **停止**：调用 stop API 后更新本地 map；如果服务端返回 409（已停），toast 错误。
-- **笔记深链**：`/notes?note=<id>` 只在挂载时读取；从讨论面板点关联笔记会走 `Link` 导航，ProjectPage 不重新挂载（同一路由 tab 变化），但 `ProjectNotes` 监听 `project.id` 而非 query，**切换 note query 不一定切换选中笔记**。这是已知行为，改深链时要一起处理。
+- **停止 / 重启**：停止调用 stop API 后更新本地 map；重启 = stop + `ensureDeployment(branch, true)`，新部署就绪前显示「重启中…」。
+- **项目设置弹窗**：不占独立路由；关闭后状态留在组件里，重新打开时从 `project` 同步名称/标语。删除项目成功后整页跳回 Dashboard。
 - **相对时间**：`relativeTime()` 在渲染时计算，没有定时器；页面不重渲染时不会自动“变旧”。
 
 ## 13. 新增功能的落点
 
 | 需求 | 主要文件 | 联动 |
 | --- | --- | --- |
-| 新项目 tab | `ProjectPage.tsx` 的 `TABS` + 条件渲染；新建页面组件 | 字典 `project.tab.*`、`pages.css`、`matchRoute` 不需要改（任意 tab 都接受）；若要默认 tab 改 `matchRoute` |
+| 项目设置项 | `components/ProjectSettingsModal.tsx` | `api.updateProject` patch 类型、`settings.*` 字典、`settings-form`/`settings-modal-danger` 样式 |
 | 新顶层页面 | `lib/router.tsx` 的 `RouteMatch/page` 与 `matchRoute`；`App.tsx` 的 `AppRoutes` | `TopNav` 面包屑、字典、样式 |
 | 新全局模态框 | `AppContext` 的 `ModalName`；`App.tsx` 挂载 | 打开入口、Escape 行为、样式 |
 | 新 API 调用 | `lib/api.ts` + `types.ts` | 页面 state/错误处理、文档 api.md |
@@ -430,11 +395,11 @@ renderMarkdown = (src) => DOMPurify.sanitize(marked.parse(src), { ADD_ATTR: ["ta
 
 - **无 focus trap / focus restore**：模态框打开后 Tab 可以跑出去；做可访问性改造时注意 `aria-modal` 已有但行为不完整。
 - **无 code splitting**：所有页面静态 import，首包包含整个应用；要优化需改 `AppRoutes` 为 `lazy` + `Suspense`。
+- **笔记 / brief 数据仍在，UI 已移除**：`/api/projects/:id/notes`、`/readme`、`Project.description/links` 仍然存在，只是没有前端入口；恢复界面时从删除前的实现或 API 文档重建。
 - **样式全局**：新增通用类名可能影响其它页面；`pages.css` 已有大量选择器。
 - **query 状态不完整**：`replaceState` 绕过 Router；浏览器前进/后退到不同 query 时页面不会重新读取初始参数。
 - **SSE 断线不补偿**：没有 `hello` 刷新、没有 `Last-Event-ID`；长时间断网后 UI 可能陈旧。
 - **评论面板过度刷新**：监听所有事件，未按项目/分支过滤。
-- **笔记 draft 不合并远端变更**：多人同时编辑同一笔记时后保存者覆盖。
 - **错误文案**：服务端英文错误直接 toast，未翻译。
 - **`useDocumentTitle`、`useMediaQuery`、`useLocalStorage`、`useClickOutside`、`TextArea`** 当前未使用（或仅定义），不要误以为已有对应行为。
 - **构建后需刷新**：生产模式服务端读 `dist/`；重新 build 后浏览器需刷新，静态资源缓存 60s。

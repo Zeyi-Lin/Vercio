@@ -13,12 +13,12 @@ Vercel's frontend collaboration used to mean connecting a GitHub repo to the clo
 - **Branch previews, not builds** — any GitHub or local Git repository; every branch becomes a live preview. Repeat visits are instant because worktrees, dependencies and deployment records are reused.
 - **Side-by-side compare** — pick any two branches and compare their frontends, with file and line-change counts against production.
 - **LAN sharing** — Vercio binds to `0.0.0.0:4000` by default. Scan the QR code and teammates can open the same workspace. Every preview has a stable `/preview/<id>` URL that can be shared on its own.
-- **Product workspace** — editable product brief, rendered README, Markdown notes with tags, pinning, autosave and branch linking, and per-branch discussions.
+- **Branch discussions** — every branch gets its own comment thread; project name, tagline and deletion live in the toolbar **Settings** dialog.
 - **Framework detection** — Next.js, Vite, Astro, SvelteKit, Remix, Nuxt, CRA, Vue CLI, Gatsby, custom dev servers and static sites get the right port and host flags automatically.
 - **Dependency caching** — cache `node_modules` by `package.json` + lockfile fingerprint; reuse the working copy's dependencies when they match.
 - **System folder picker** — Browse opens the operating system's own folder chooser (macOS, Windows, Linux) and fills the selected repository path in for you; when no GUI is available it falls back to an in-page browser.
 - **Visible progress** — live logs for worktree preparation, dependency install and dev-server startup; retry after failures, stop previews on demand.
-- **Local-first** — code, branches, product briefs, notes and comments live in `.vercio/` on this machine. Nothing is uploaded.
+- **Local-first** — code, branches and comments live in `.vercio/` on this machine. Nothing is uploaded.
 - **Chinese / English UI** — auto-detects the browser language and can be switched with the **EN / 中文** control in the top bar. Project content stays in its original language.
 - **Light / dark themes** — follows the system appearance on first visit and can be toggled with the sun/moon button in the top bar (or from the local profile dialog). The preference is remembered. The **full-width layout** uses the whole screen so wide previews and deployment tables stay comfortable on large monitors.
 
@@ -28,13 +28,9 @@ Vercel's frontend collaboration used to mean connecting a GitHub repo to the clo
 | --- | --- |
 | ![Branch preview](docs/images/branch-preview.jpg) | ![Compare](docs/images/compare.jpg) |
 
-| Discussion | Notes |
+| Discussion | Share on Wi-Fi |
 | --- | --- |
-| ![Discussion](docs/images/discussion.jpg) | ![Notes](docs/images/notes.jpg) |
-
-| Overview (brief + README) | Share on Wi-Fi |
-| --- | --- |
-| ![Overview](docs/images/overview.jpg) | ![Share](docs/images/share.jpg) |
+| ![Discussion](docs/images/discussion.jpg) | ![Share](docs/images/share.jpg) |
 
 | Chinese UI (dark) | English UI (dark) |
 | --- | --- |
@@ -61,7 +57,7 @@ npm start
 
 Open http://localhost:4000. Then:
 
-1. Click **Load demo project** to load the bundled four-branch Lumen demo (branch switching, compare, notes and discussion are all seeded), or
+1. Click **Load demo project** to load the bundled four-branch Lumen demo (branch switching, compare and discussion are ready to try), or
 2. Click **Add project** and enter a GitHub repository (`owner/repo` or a full URL) or an absolute local repository path.
 
 LAN sharing: click **Share** in the top bar or use the QR code on the dashboard. Vercio listens on `0.0.0.0:4000` by default; any device on the same Wi-Fi can open `http://<your-LAN-IP>:4000`.
@@ -82,10 +78,10 @@ Code-level documentation for contributors and AI coding agents lives in [docs/](
 ## Usage
 
 1. **Add a project** — GitHub repositories are cloned into `.vercio/repos/`; local repositories are referenced in place and your working copy is never modified.
-2. **Previews** — click a branch in the left panel to switch instantly; Vercio never starts a dev server by itself. A branch that is not running yet shows a **Start preview** button — pressing it creates an isolated worktree, installs dependencies and streams logs. Repeat visits reuse the running preview. Use the expand button in the browser chrome for an immersive preview that fills the browser viewport (tabs and address bar stay visible); Esc or the bottom pill exits.
+2. **Previews** — click a branch in the left panel to switch instantly; Vercio never starts a dev server by itself. A branch that is not running yet shows a **Start preview** button — pressing it creates an isolated worktree, installs dependencies and streams logs. Repeat visits reuse the running preview. Toolbar **Restart preview** stops the current deployment and starts a fresh one; **Stop preview** releases the port. Use the expand button in the browser chrome for an immersive preview that fills the browser viewport (tabs and address bar stay visible); Esc or the bottom pill exits.
 3. **Compare** — click **Compare**, choose another branch on the right, and inspect two live frontends side by side.
 4. **Discussion** — open **Discussion** on a preview to leave branch-specific feedback. Everyone on the network sees it instantly.
-5. **Brief and notes** — write the product brief on the Overview tab and keep design reviews, launch checklists and open questions in Notes. Markdown, autosave and tags included.
+5. **Settings** — the toolbar **Settings** dialog edits the project name and tagline; deleting a project (with a type-to-confirm step) lives there too. Overview, notes and the standalone settings page are gone.
 6. **Share** — the top-bar Share dialog shows a QR code and LAN URLs. **Share preview** under a branch produces a LAN link that opens straight to that branch (the preview keeps streaming while it runs on this machine); individual `/preview/<deployment-id>/` links can be shared too.
 
 ## Supported frameworks
@@ -161,12 +157,12 @@ npm test
 
 Coverage: Git branch parsing and diffs, project/note/comment APIs, static preview redirects, custom dev-server preview lifecycle and shutdown, concurrent worktree isolation, the system folder dialog (command construction, cancel/unavailable/invalid-path handling, API delegation), the in-page folder browser (directories only, Git detection, tilde expansion and error handling), and demo project generation with two real branch previews.
 
-Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, autosave a note, edit the brief and settings, add/delete a project, pick a local folder through the native chooser and the in-page fallback, mobile layouts), light/dark switching with persistence, a 1920px full-width layout, plus typecheck and production build — all with no console errors.
+Verification performed for this build: real Vite project (install → dev server → dependency cache reuse → LAN access), GitHub clone import, headless-Chrome end-to-end flows (load demo, switch/compare branches, post a comment, stop/restart a preview, rename through the settings dialog, add/delete a project, pick a local folder through the native chooser and the in-page fallback, mobile layouts), light/dark switching with persistence, a 1920px full-width layout, plus typecheck and production build — all with no console errors.
 
 ## Languages and themes
 
 - The UI ships in **Chinese / English**. The browser language is used on first visit; switch any time with the **EN / 中文** control.
-- Project content (branches, README, briefs, notes, comments) is shown as authored and is not translated.
+- Project content (branches, comments) is shown as authored and is not translated.
 - **Light / dark themes** follow `prefers-color-scheme` on first visit and can be toggled with the sun/moon button in the top bar or from the local profile dialog. The choice is persisted in `vercio:theme`; theme styles live in [web/src/styles/theme-light.css](web/src/styles/theme-light.css).
 - Pages use a **full-width layout** with responsive gutters, so wide screens make the most of branch previews, compare panes and deployment tables.
 

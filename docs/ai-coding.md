@@ -9,7 +9,7 @@
 ```text
 ┌ 浏览器（React SPA，web/）
 │   /                 Dashboard
-│   /p/:id/:tab       Overview / Previews / Notes / Settings
+│   /p/:id            分支预览工作区（旧 /overview|/notes|/settings 会重定向）
 │   /preview/:dpl/*   302 → 预览端口（41xx）
 │
 ├ 主服务（Node，server/）:4000
@@ -173,16 +173,15 @@ npm run build
 
 Deployment 字段还要考虑：`create()` 初始化、`run()` 回填、`toPublic()`、前端类型、状态页（如需要）。
 
-### Recipe 6：新增页面或项目 tab
+### Recipe 6：新增页面或设置项
 
-**项目 tab（最常见）**
+项目现在只有一个界面（`/p/:id/previews`）；**不要再加项目 tab**，旧 tab 深链会被重定向。项目级设置加在 `components/ProjectSettingsModal.tsx`，工具栏「设置」打开。
 
-1. `ProjectPage.tsx` 的 `TABS` 加 `{ id, labelKey }`。
-2. `TABS` 下方条件渲染新组件。
-3. 新页面组件放 `pages/`，通过 props 拿 `project` / `detail`。
-4. `dictionary.ts` 加 `project.tab.<id>`（en+zh）。
-5. `pages.css` 加布局；预览 tab 走全屏工作区（`.project-workspace` / `.previews`），默认 tab 的头部在 `TopNav`，新增 tab 若要复用 tab 条需确认不会和全屏预览布局冲突。
-6. 深链 `/p/:id/<tab>` 自动可用（`matchRoute` 接受任意 tab）。
+**项目设置项**
+
+1. `ProjectSettingsModal.tsx` 加字段与本地 state。
+2. 保存时 `api.updateProject`（必要时先扩展 `web/src/lib/api.ts` 的 patch 类型）。
+3. `dictionary.ts` 加文案（en+zh）；样式优先复用 `.settings-form` / `.settings-modal-danger`。
 
 **顶层页面**
 
@@ -342,9 +341,10 @@ curl -s http://127.0.0.1:4000/api/health
 
 1. Load demo → Previews → 切两个分支 → Compare。
 2. 预览未就绪时看日志；ready 后 iframe 正常。
-3. Discussion 发/删评论；Notes 新建/自动保存/刷新仍在。
-4. 亮/暗切换 + 刷新持久化；手机宽度无溢出。
-5. 停止预览后访问 `/preview/<id>/` 显示 stopped；再点分支能重新建。
+3. Discussion 发/删评论。
+4. 工具栏「设置」弹窗改名/改标语并保存；旧 `/overview`、`/notes`、`/settings` 链接会跳到预览。
+5. 亮/暗切换 + 刷新持久化；手机宽度无溢出。
+6. 停止预览后访问 `/preview/<id>/` 显示 stopped；再点分支能重新建。
 
 ### 资源泄漏检查（改部署/端口/删除时）
 

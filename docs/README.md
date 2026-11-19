@@ -45,7 +45,7 @@
 
 | 术语 | 含义 | 代码位置 |
 | --- | --- | --- |
-| Project | 一个被接入的 Git 仓库 + 产品空间（brief、notes、comments） | `ProjectsManager`，`state.projects` |
+| Project | 一个被接入的 Git 仓库 + 预览工作区（名称/标语、comments；brief/notes 数据仍保留在 API） | `ProjectsManager`，`state.projects` |
 | Branch | 仓库里的分支，UI 上的预览入口 | `git.listBranches()` |
 | Deployment | 一次“把某分支某 commit 跑起来”的尝试，有独立 id/端口/worktree/日志 | `DeploymentManager`，`state.deployments` |
 | Preview | 就绪的 deployment 对外呈现；通过 `/preview/<dpl_id>/` 访问 | `routes.js` + 预览端口 |

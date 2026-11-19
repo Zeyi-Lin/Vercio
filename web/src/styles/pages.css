@@ -1287,6 +1287,12 @@
   overflow-y: auto;
   padding: 0 10px 12px;
 }
+/* Separates the pinned group from the rest of the branch list. */
+.branch-list-divider {
+  height: 1px;
+  margin: 6px 4px 8px;
+  background: var(--border);
+}
 .branch-item {
   display: flex;
   flex-direction: column;
@@ -1791,12 +1797,17 @@
 .preview-frame-wrap.is-focus .browser-viewport {
   background: #000;
 }
-.preview-focus-exit {
+.preview-focus-actions {
   position: absolute;
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
   z-index: 210;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-focus-action {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1809,11 +1820,19 @@
   color: #fff;
   font-size: 12px;
   cursor: pointer;
-  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+  transition: background 120ms var(--ease), border-color 120ms var(--ease), opacity 120ms var(--ease);
 }
-.preview-focus-exit:hover {
+.preview-focus-action:hover {
   background: rgba(30, 30, 30, 0.9);
   border-color: rgba(255, 255, 255, 0.3);
+}
+.preview-focus-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.preview-focus-action:disabled:hover {
+  background: rgba(10, 10, 10, 0.72);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 .preview-focus-kbd {
   font-family: var(--font-mono);

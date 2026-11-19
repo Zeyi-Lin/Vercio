@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
+  Copy,
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,9 +11,10 @@ import {
   Search,
 } from "lucide-react";
 import { useT } from "../i18n";
-import { relativeTime } from "../lib/format";
+import { copyText, relativeTime } from "../lib/format";
 import type { Branch, BranchSource, Deployment } from "../lib/types";
 import { Skeleton, Spinner } from "./ui";
+import { useToast } from "./Toast";
 
 function branchDeployment(
   branch: Branch,
@@ -58,8 +60,8 @@ export function BranchPanel({
   refreshing,
   onSelect,
   onRefresh,
-  pinnedBranch = null,
-  onPinBranch,
+  pinnedBranches = [],
+  onTogglePinnedBranch,
   collapsed = false,
   onToggleCollapsed,
   footerActions,
@@ -74,26 +76,34 @@ export function BranchPanel({
   refreshing?: boolean;
   onSelect: (branch: string) => void;
   onRefresh: () => void;
-  pinnedBranch?: string | null;
-  onPinBranch?: (branch: string | null) => void;
+  pinnedBranches?: string[];
+  onTogglePinnedBranch?: (branch: string) => void;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   footerActions?: ReactNode;
 }) {
   const t = useT();
+  const { pushToast } = useToast();
   const [filter, setFilter] = useState("");
   const [ctxMenu, setCtxMenu] = useState<{ branch: string; x: number; y: number } | null>(
     null
   );
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // The pinned branch always sits first; every other branch keeps its git order.
+  const pinnedSet = useMemo(() => new Set(pinnedBranches), [pinnedBranches]);
+
+  // Pinned branches sit first in pin order (newest pin first); every other
+  // branch keeps its git order below them.
   const orderedBranches = useMemo(() => {
-    if (!pinnedBranch) return branches;
-    const pinned = branches.find((branch) => branch.name === pinnedBranch);
-    if (!pinned) return branches;
-    return [pinned, ...branches.filter((branch) => branch.name !== pinnedBranch)];
-  }, [branches, pinnedBranch]);
+    if (!pinnedBranches.length) return branches;
+    const byName = new Map(branches.map((branch) => [branch.name, branch]));
+    const pinned = pinnedBranches
+      .map((name) => byName.get(name))
+      .filter((branch): branch is Branch => Boolean(branch));
+    if (!pinned.length) return branches;
+    const pinnedNames = new Set(pinned.map((branch) => branch.name));
+    return [...pinned, ...branches.filter((branch) => !pinnedNames.has(branch.name))];
+  }, [branches, pinnedBranches]);
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -105,6 +115,15 @@ export function BranchPanel({
         (branch.author || "").toLowerCase().includes(needle)
     );
   }, [orderedBranches, filter]);
+
+  const visiblePinned = useMemo(
+    () => visible.filter((branch) => pinnedSet.has(branch.name)),
+    [visible, pinnedSet]
+  );
+  const visibleOthers = useMemo(
+    () => visible.filter((branch) => !pinnedSet.has(branch.name)),
+    [visible, pinnedSet]
+  );
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -133,15 +152,88 @@ export function BranchPanel({
   }, [ctxMenu]);
 
   const openContextMenu = (branch: string, event: ReactMouseEvent) => {
-    if (!onPinBranch) return;
     event.preventDefault();
+    const itemCount = 1 + (onTogglePinnedBranch ? 1 : 0);
     const width = 212;
-    const height = 96;
+    const height = 40 + itemCount * 34;
     setCtxMenu({
       branch,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
     });
+  };
+
+  const copyBranchName = async (branch: string) => {
+    try {
+      await copyText(branch);
+      pushToast(t("preview.branchNameCopied"), "success");
+    } catch {
+      pushToast(t("common.copyFailed"), "error");
+    }
+  };
+
+  const renderBranch = (branch: Branch) => {
+    const deployment = branchDeployment(branch, deployments);
+    const source = sources.find((item) => item.branch === branch.name) || null;
+    const active = branch.name === selected;
+    const compared = compare && branch.name === compareBranch;
+    return (
+      <button
+        key={branch.name}
+        className={
+          "branch-item" +
+          (active ? " branch-item-active" : "") +
+          (compared ? " branch-item-compared" : "")
+        }
+        onClick={() => onSelect(branch.name)}
+        onContextMenu={(event) => openContextMenu(branch.name, event)}
+        aria-pressed={active}
+      >
+        <div className="branch-item-top">
+          <GitBranch size={11} className="branch-item-icon" />
+          <span className="branch-item-name mono truncate">{branch.name}</span>
+          {pinnedSet.has(branch.name) && (
+            <span
+              className="branch-item-pin"
+              title={t("preview.pinnedHint")}
+              aria-label={t("preview.pinnedHint")}
+            >
+              <Pin size={10} />
+            </span>
+          )}
+          {branch.isDefault && <span className="branch-tag">{t("preview.prod")}</span>}
+        </div>
+        <div className="branch-item-subject truncate">
+          {branch.subject || "No commit message"}
+        </div>
+        <div className="branch-item-meta">
+          <span className="truncate">{branch.author}</span>
+          <span className="dot-sep">·</span>
+          <span>{relativeTime(branch.date)}</span>
+          <span className="branch-item-state">
+            {deployment ? (
+              <span className={"branch-state branch-state-" + deploymentStateClass(deployment)}>
+                <span className="branch-state-dot" />
+                {deploymentStateLabel(deployment, t)}
+              </span>
+            ) : source ? (
+              <span
+                className="branch-state branch-state-source"
+                title={t("preview.sourceAvailableHint", { branch: branch.name })}
+              >
+                <span className="branch-state-dot" />
+                {t("preview.stateSource")}
+              </span>
+            ) : (
+              <span className="branch-state branch-state-none">
+                <span className="branch-state-dot" />
+                {t("preview.new")}
+              </span>
+            )}
+          </span>
+        </div>
+      </button>
+    );
   };
 
   if (collapsed) {
@@ -227,70 +319,11 @@ export function BranchPanel({
         {!loading && visible.length === 0 && (
           <p className="branch-empty">{t("preview.noMatch", { query: filter })}</p>
         )}
-        {!loading &&
-          visible.map((branch) => {
-            const deployment = branchDeployment(branch, deployments);
-            const source = sources.find((item) => item.branch === branch.name) || null;
-            const active = branch.name === selected;
-            const compared = compare && branch.name === compareBranch;
-            return (
-              <button
-                key={branch.name}
-                className={
-                  "branch-item" +
-                  (active ? " branch-item-active" : "") +
-                  (compared ? " branch-item-compared" : "")
-                }
-                onClick={() => onSelect(branch.name)}
-                onContextMenu={(event) => openContextMenu(branch.name, event)}
-                aria-pressed={active}
-              >
-                <div className="branch-item-top">
-                  <GitBranch size={11} className="branch-item-icon" />
-                  <span className="branch-item-name mono truncate">{branch.name}</span>
-                  {pinnedBranch === branch.name && (
-                    <span
-                      className="branch-item-pin"
-                      title={t("preview.pinnedHint")}
-                      aria-label={t("preview.pinnedHint")}
-                    >
-                      <Pin size={10} />
-                    </span>
-                  )}
-                  {branch.isDefault && <span className="branch-tag">{t("preview.prod")}</span>}
-                </div>
-                <div className="branch-item-subject truncate">
-                  {branch.subject || "No commit message"}
-                </div>
-                <div className="branch-item-meta">
-                  <span className="truncate">{branch.author}</span>
-                  <span className="dot-sep">·</span>
-                  <span>{relativeTime(branch.date)}</span>
-                  <span className="branch-item-state">
-                    {deployment ? (
-                      <span className={"branch-state branch-state-" + deploymentStateClass(deployment)}>
-                        <span className="branch-state-dot" />
-                        {deploymentStateLabel(deployment, t)}
-                      </span>
-                    ) : source ? (
-                      <span
-                        className="branch-state branch-state-source"
-                        title={t("preview.sourceAvailableHint", { branch: branch.name })}
-                      >
-                        <span className="branch-state-dot" />
-                        {t("preview.stateSource")}
-                      </span>
-                    ) : (
-                      <span className="branch-state branch-state-none">
-                        <span className="branch-state-dot" />
-                        {t("preview.new")}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
+        {!loading && visiblePinned.map(renderBranch)}
+        {!loading && visiblePinned.length > 0 && visibleOthers.length > 0 && (
+          <div className="branch-list-divider" role="separator" />
+        )}
+        {!loading && visibleOthers.map(renderBranch)}
       </div>
       {ctxMenu && (
         <div
@@ -309,16 +342,31 @@ export function BranchPanel({
             onClick={() => {
               const target = ctxMenu.branch;
               setCtxMenu(null);
-              onPinBranch?.(pinnedBranch === target ? null : target);
+              void copyBranchName(target);
             }}
           >
-            {pinnedBranch === ctxMenu.branch ? <PinOff size={13} /> : <Pin size={13} />}
-            <span>
-              {pinnedBranch === ctxMenu.branch
-                ? t("preview.unpinBranch")
-                : t("preview.pinBranch")}
-            </span>
+            <Copy size={13} />
+            <span>{t("preview.copyBranchName")}</span>
           </button>
+          {onTogglePinnedBranch && (
+            <button
+              type="button"
+              role="menuitem"
+              className="branch-context-item"
+              onClick={() => {
+                const target = ctxMenu.branch;
+                setCtxMenu(null);
+                onTogglePinnedBranch(target);
+              }}
+            >
+              {pinnedSet.has(ctxMenu.branch) ? <PinOff size={13} /> : <Pin size={13} />}
+              <span>
+                {pinnedSet.has(ctxMenu.branch)
+                  ? t("preview.unpinBranch")
+                  : t("preview.pinBranch")}
+              </span>
+            </button>
+          )}
         </div>
       )}
       <div className="branch-panel-foot">

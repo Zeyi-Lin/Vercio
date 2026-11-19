@@ -108,7 +108,27 @@ export class ProjectsManager {
     this.config = config;
     this.deployments = deployments;
     this.importing = new Map();
+    this.migratePinnedBranches();
     this.recoverInterrupted();
+  }
+
+  // Older databases stored a single pinned branch as `pinnedBranch`. Fold it
+  // into the `pinnedBranches` array so the rest of the server only sees one shape.
+  migratePinnedBranches() {
+    let changed = false;
+    for (const project of this.store.get().projects) {
+      if (!Array.isArray(project.pinnedBranches)) {
+        const legacy =
+          typeof project.pinnedBranch === "string" ? project.pinnedBranch.trim() : "";
+        project.pinnedBranches = legacy ? [legacy] : [];
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(project, "pinnedBranch")) {
+        delete project.pinnedBranch;
+        changed = true;
+      }
+    }
+    if (changed) this.store.markDirty();
   }
 
   recoverInterrupted() {
@@ -139,7 +159,7 @@ export class ProjectsManager {
       originUrl: project.originUrl || "",
       dirtyCount: project.dirtyCount || 0,
       branchCount: project.branchCount || 0,
-      pinnedBranch: project.pinnedBranch || null,
+      pinnedBranches: Array.isArray(project.pinnedBranches) ? project.pinnedBranches : [],
       framework: project.framework || null,
       description: project.description || "",
       tagline: project.tagline || "",
@@ -216,7 +236,7 @@ export class ProjectsManager {
         description: "",
         tagline: "",
         links: [],
-        pinnedBranch: null,
+        pinnedBranches: [],
         status: "ready",
         error: null,
         createdAt: nowIso(),
@@ -241,7 +261,7 @@ export class ProjectsManager {
       description: "",
       tagline: "",
       links: [],
-      pinnedBranch: null,
+      pinnedBranches: [],
       status: "importing",
       error: null,
       createdAt: nowIso(),
@@ -315,7 +335,7 @@ export class ProjectsManager {
       description: DEMO_DESCRIPTION,
       tagline: "AI meeting notes for teams that ship.",
       links: [],
-      pinnedBranch: null,
+      pinnedBranches: [],
       status: "ready",
       error: null,
       isDemo: true,
@@ -379,24 +399,26 @@ export class ProjectsManager {
           url: String(link.url).slice(0, 500),
         }));
     }
-    if (patch.pinnedBranch !== undefined) {
-      if (patch.pinnedBranch === null || patch.pinnedBranch === "") {
-        project.pinnedBranch = null;
-      } else if (typeof patch.pinnedBranch !== "string") {
-        throw new HttpError(400, "pinnedBranch must be a branch name or null");
-      } else {
-        const wanted = patch.pinnedBranch.trim().slice(0, 255);
-        if (!wanted) {
-          project.pinnedBranch = null;
-        } else {
-          if (project.status !== "ready") throw new HttpError(409, "Project is not ready");
-          const { branches } = await listBranches(project.repoPath);
-          if (!branches.some((branch) => branch.name === wanted)) {
-            throw new HttpError(422, "Branch not found: " + wanted);
-          }
-          project.pinnedBranch = wanted;
-        }
+    if (patch.pinnedBranches !== undefined) {
+      if (!Array.isArray(patch.pinnedBranches)) {
+        throw new HttpError(400, "pinnedBranches must be an array of branch names");
       }
+      const wanted = [];
+      for (const value of patch.pinnedBranches) {
+        if (typeof value !== "string") {
+          throw new HttpError(400, "pinnedBranches must be an array of branch names");
+        }
+        const name = value.trim().slice(0, 255);
+        if (name && !wanted.includes(name)) wanted.push(name);
+      }
+      if (wanted.length) {
+        if (project.status !== "ready") throw new HttpError(409, "Project is not ready");
+        const { branches } = await listBranches(project.repoPath);
+        const available = new Set(branches.map((branch) => branch.name));
+        const missing = wanted.find((name) => !available.has(name));
+        if (missing) throw new HttpError(422, "Branch not found: " + missing);
+      }
+      project.pinnedBranches = wanted;
     }
     project.updatedAt = nowIso();
     this.store.markDirty();

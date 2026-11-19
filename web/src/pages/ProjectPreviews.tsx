@@ -72,8 +72,13 @@ export function ProjectPreviews({
   const [changes, setChanges] = useState<BranchChanges | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [pinnedBranch, setPinnedBranch] = useState<string | null>(project.pinnedBranch ?? null);
+  const [pinnedBranches, setPinnedBranches] = useState<string[]>(
+    project.pinnedBranches ?? []
+  );
   const [reattaching, setReattaching] = useState(false);
+  const [restarting, setRestarting] = useState<{ branch: string; deploymentId: string | null } | null>(
+    null
+  );
   const [focus, setFocus] = useState(false);
   const [branchesCollapsed, setBranchesCollapsed] = useState(() => {
     try {
@@ -87,6 +92,7 @@ export function ProjectPreviews({
   const branchesFolded = branchesCollapsed && !narrowWorkspace;
   const menuRef = useRef<HTMLDivElement | null>(null);
   const inflight = useRef<Set<string>>(new Set());
+  const pinRequestRef = useRef(0);
   const deploymentsRef = useRef(deployments);
   deploymentsRef.current = deployments;
 
@@ -96,10 +102,10 @@ export function ProjectPreviews({
     } catch {}
   }, [branchesCollapsed]);
 
-  // Keep the pin in sync when the project is refreshed from another view.
+  // Keep pins in sync when the project is refreshed from another view.
   useEffect(() => {
-    setPinnedBranch(project.pinnedBranch ?? null);
-  }, [project.id, project.pinnedBranch]);
+    setPinnedBranches(project.pinnedBranches ?? []);
+  }, [project.id, project.pinnedBranches]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -454,22 +460,35 @@ export function ProjectPreviews({
     ensureDeployment(branch, true);
   };
 
-  const pinBranch = useCallback(
-    async (branch: string | null) => {
-      const previous = pinnedBranch;
-      setPinnedBranch(branch);
+  const togglePinnedBranch = useCallback(
+    async (branch: string) => {
+      const previous = pinnedBranches;
+      const next = previous.includes(branch)
+        ? previous.filter((name) => name !== branch)
+        : [branch, ...previous];
+      const requestId = ++pinRequestRef.current;
+      setPinnedBranches(next);
       try {
-        const result = await api.updateProject(project.id, { pinnedBranch: branch });
-        setPinnedBranch(result.project.pinnedBranch ?? null);
+        const result = await api.updateProject(project.id, { pinnedBranches: next });
+        if (pinRequestRef.current !== requestId) return;
+        // A server that predates multi-pin support silently ignores the field;
+        // surface that instead of reverting the optimistic update without a word.
+        if (!Array.isArray(result.project.pinnedBranches)) {
+          setPinnedBranches(previous);
+          pushToast(t("preview.pinNeedsRestart"), "error");
+          return;
+        }
+        setPinnedBranches(result.project.pinnedBranches);
       } catch (pinError) {
-        setPinnedBranch(previous);
+        if (pinRequestRef.current !== requestId) return;
+        setPinnedBranches(previous);
         pushToast(
           pinError instanceof Error ? pinError.message : t("preview.pinError"),
           "error"
         );
       }
     },
-    [pinnedBranch, project.id, pushToast, t]
+    [pinnedBranches, project.id, pushToast, t]
   );
 
   const stopBranch = async (branch: string) => {
@@ -483,6 +502,43 @@ export function ProjectPreviews({
       pushToast(stopError instanceof Error ? stopError.message : t("preview.stopError"), "error");
     }
   };
+
+  // Restarting is stop + a fresh deployment for the same branch, so the new
+  // process picks up the current commit, env files and mode again. The toolbar
+  // keeps showing "Restarting…" until the new deployment is ready.
+  const restartBranch = async (branch: string) => {
+    const deployment = deploymentFor(branch);
+    if (!deployment || restarting) return;
+    setRestarting({ branch, deploymentId: null });
+    try {
+      const stopped = await api.stopDeployment(deployment.id);
+      setDeployments((current) => ({ ...current, [branch]: stopped.deployment }));
+      const next = await ensureDeployment(branch, true);
+      if (!next) {
+        setRestarting(null);
+        return;
+      }
+      setRestarting({ branch, deploymentId: next.id });
+    } catch (restartError) {
+      setRestarting(null);
+      pushToast(
+        restartError instanceof Error ? restartError.message : t("preview.restartError"),
+        "error"
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!restarting || !restarting.deploymentId) return;
+    const deployment = deployments[restarting.branch];
+    if (!deployment || deployment.id !== restarting.deploymentId) return;
+    if (deployment.status === "ready") {
+      setRestarting(null);
+      pushToast(t("preview.restartedToast"), "success");
+    } else if (deployment.status === "error" || deployment.status === "stopped") {
+      setRestarting(null);
+    }
+  }, [deployments, restarting, pushToast, t]);
 
   const reattachBranch = async (branch: string) => {
     const deployment = deploymentFor(branch);
@@ -586,8 +642,8 @@ export function ProjectPreviews({
         refreshing={branchRefreshing}
         onSelect={selectBranch}
         onRefresh={() => loadBranches(false)}
-        pinnedBranch={pinnedBranch}
-        onPinBranch={pinBranch}
+        pinnedBranches={pinnedBranches}
+        onTogglePinnedBranch={togglePinnedBranch}
         collapsed={branchesFolded}
         onToggleCollapsed={() => setBranchesCollapsed((value) => !value)}
         footerActions={
@@ -727,6 +783,32 @@ export function ProjectPreviews({
                 </button>
               ))}
             </div>
+            {selected &&
+              (primaryDeployment?.status === "ready" ||
+                restarting?.branch === selected) && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="toolbar-btn"
+                  icon={<Square size={10} />}
+                  onClick={() => stopBranch(selected)}
+                  disabled={Boolean(restarting)}
+                >
+                  {t("preview.stop")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="toolbar-btn"
+                  icon={<RefreshCw size={13} className={restarting ? "spin" : ""} />}
+                  onClick={() => restartBranch(selected)}
+                  disabled={Boolean(restarting)}
+                >
+                  {restarting ? t("preview.restarting") : t("preview.restart")}
+                </Button>
+              </>
+            )}
             <Button
               size="sm"
               variant="secondary"
@@ -788,15 +870,27 @@ export function ProjectPreviews({
                 onFullscreen={enterFocus}
               />
               {focus && (
-                <button
-                  type="button"
-                  className="preview-focus-exit"
-                  onClick={exitFocus}
-                >
-                  <Minimize2 size={14} />
-                  {t("preview.exitFullscreen")}
-                  <span className="preview-focus-kbd">Esc</span>
-                </button>
+                <div className="preview-focus-actions">
+                  <button
+                    type="button"
+                    className="preview-focus-action"
+                    onClick={() => reloadBranch(selected)}
+                    title={t("preview.reload")}
+                    disabled={primaryDeployment?.status !== "ready"}
+                  >
+                    <RefreshCw size={14} />
+                    {t("preview.focusReload")}
+                  </button>
+                  <button
+                    type="button"
+                    className="preview-focus-action"
+                    onClick={exitFocus}
+                  >
+                    <Minimize2 size={14} />
+                    {t("preview.exitFullscreen")}
+                    <span className="preview-focus-kbd">Esc</span>
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -865,16 +959,6 @@ export function ProjectPreviews({
               </span>
             )}
             {primaryDeployment?.framework && <Badge>{frameworkLabel(primaryDeployment.framework, t)}</Badge>}
-            {primaryDeployment && primaryDeployment.status === "ready" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Square size={10} />}
-                onClick={() => stopBranch(selected)}
-              >
-                {t("preview.stop")}
-              </Button>
-            )}
             {primaryDeployment && (
               <span className="deployment-id mono" title={t("preview.deploymentId")}>
                 {primaryDeployment.id}

@@ -102,7 +102,7 @@ export interface Project {
   originUrl: string;
   dirtyCount: number;
   branchCount: number;
-  pinnedBranch?: string | null;
+  pinnedBranches?: string[];
   framework: FrameworkInfo | null;
   description: string;
   tagline: string;

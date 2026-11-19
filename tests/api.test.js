@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { createVercioApp } from "../server/index.js";
 import { deployBranch, makeRepo, request, startApp, staticPage } from "./helpers.js";
 
 test("project, notes, comments, LAN info and static preview lifecycle", { timeout: 120000 }, async (t) => {
@@ -39,31 +42,42 @@ test("project, notes, comments, LAN info and static preview lifecycle", { timeou
   assert.equal(patched.status, 200);
   assert.match(patched.json.project.description, /Product brief/);
 
-  // Only one branch can be pinned; it persists on the project record.
+  // Multiple branches can be pinned; the array order is preserved.
   const pinned = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
-    pinnedBranch: "feat/blue",
+    pinnedBranches: ["feat/blue", "main"],
   });
   assert.equal(pinned.status, 200);
-  assert.equal(pinned.json.project.pinnedBranch, "feat/blue");
+  assert.deepEqual(pinned.json.project.pinnedBranches, ["feat/blue", "main"]);
   const pinnedReload = await request(ctx.base, "GET", "/api/projects/" + project.id);
-  assert.equal(pinnedReload.json.project.pinnedBranch, "feat/blue");
+  assert.deepEqual(pinnedReload.json.project.pinnedBranches, ["feat/blue", "main"]);
+
+  // Names are trimmed and deduplicated; order follows the request.
+  const deduped = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranches: [" main ", "feat/blue", "main"],
+  });
+  assert.equal(deduped.status, 200);
+  assert.deepEqual(deduped.json.project.pinnedBranches, ["main", "feat/blue"]);
 
   const missingBranch = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
-    pinnedBranch: "no/such-branch",
+    pinnedBranches: ["feat/blue", "no/such-branch"],
   });
   assert.equal(missingBranch.status, 422);
   const badPinType = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
-    pinnedBranch: 42,
+    pinnedBranches: "feat/blue",
   });
   assert.equal(badPinType.status, 400);
+  const badPinItem = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
+    pinnedBranches: ["feat/blue", 42],
+  });
+  assert.equal(badPinItem.status, 400);
   const stillPinned = await request(ctx.base, "GET", "/api/projects/" + project.id);
-  assert.equal(stillPinned.json.project.pinnedBranch, "feat/blue");
+  assert.deepEqual(stillPinned.json.project.pinnedBranches, ["main", "feat/blue"]);
 
   const unpinned = await request(ctx.base, "PATCH", "/api/projects/" + project.id, {
-    pinnedBranch: null,
+    pinnedBranches: [],
   });
   assert.equal(unpinned.status, 200);
-  assert.equal(unpinned.json.project.pinnedBranch, null);
+  assert.deepEqual(unpinned.json.project.pinnedBranches, []);
 
   const branches = await request(ctx.base, "GET", "/api/projects/" + project.id + "/branches");
   assert.equal(branches.status, 200);
@@ -185,4 +199,50 @@ test("project, notes, comments, LAN info and static preview lifecycle", { timeou
   const overviewAfter = await request(ctx.base, "GET", "/api/overview");
   assert.equal(overviewAfter.json.projects.length, 0);
   assert.equal(overviewAfter.json.deployments.length, 0);
+});
+
+test("legacy pinnedBranch is migrated to pinnedBranches on startup", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "vercio-migrate-"));
+  fs.writeFileSync(
+    path.join(dataDir, "db.json"),
+    JSON.stringify({
+      version: 1,
+      settings: { userName: "", defaultAuthor: "" },
+      projects: [
+        {
+          id: "prj_legacy",
+          name: "Legacy",
+          source: { kind: "path", input: "/tmp/legacy", path: "/tmp/legacy" },
+          repoPath: "/tmp/legacy-repo",
+          defaultBranch: "main",
+          currentBranch: "main",
+          description: "",
+          tagline: "",
+          links: [],
+          pinnedBranch: "feat/blue",
+          status: "ready",
+          error: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      deployments: [],
+      notes: [],
+      comments: [],
+    })
+  );
+  const app = await createVercioApp({ dataDir, port: 0, host: "127.0.0.1" });
+  await app.listen();
+  const base = "http://127.0.0.1:" + app.runtime.port;
+  try {
+    const project = await request(base, "GET", "/api/projects/prj_legacy");
+    assert.equal(project.status, 200);
+    assert.deepEqual(project.json.project.pinnedBranches, ["feat/blue"]);
+  } finally {
+    await app.close();
+  }
+  const saved = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
+  assert.deepEqual(saved.projects[0].pinnedBranches, ["feat/blue"]);
+  assert.ok(!("pinnedBranch" in saved.projects[0]));
+  fs.rmSync(dataDir, { recursive: true, force: true });
 });

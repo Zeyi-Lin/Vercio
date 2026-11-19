@@ -90,7 +90,7 @@ export const api = {
   },
   async updateProject(
     id: string,
-    patch: Partial<Pick<Project, "name" | "tagline" | "description" | "links" | "pinnedBranch">>
+    patch: Partial<Pick<Project, "name" | "tagline" | "description" | "links" | "pinnedBranches">>
   ) {
     return request<{ project: Project }>("/api/projects/" + encodeURIComponent(id), {
       method: "PATCH",

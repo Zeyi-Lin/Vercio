@@ -203,10 +203,11 @@ inflight: ref<Set<branch>>（防重复请求）
 - 同分支请求在 `inflight` 中 → 不重复发；
 - 成功后写入 `deployments[branch]`；未就绪则拉一次日志。
 
-**本地服务的启动必须由用户明确触发**：页面加载、深链、切换分支、切换 compare 分支都不会调用 `api.deploy`；只有两种入口会真正启动：
+**本地服务的启动必须由用户明确触发**：页面加载、深链、切换分支、切换 compare 分支都不会调用 `api.deploy`；只有三种入口会真正启动：
 
 1. 预览舞台的 idle / stopped 状态里的「启动预览」按钮（切换分支本身不会启动服务）；
-2. 失败状态的「重试预览」（`ensureDeployment(branch, true)`）。
+2. 失败状态的「重试预览」（`ensureDeployment(branch, true)`）；
+3. 工具栏的「重启预览」：先 stop 当前部署，再 `ensureDeployment(branch, true)` 重新 POST，生成新的部署记录并重新解析 commit、编辑源与 mode；按钮在重新就绪前显示「重启中…」，失败回滚为可再次重启。
 
 初始分支：URL `?branch=` 命中分支列表则用它，否则 `defaultBranch`；只同步已有部署快照，不自动启动。若 `?compare=` 命中且不等于初始分支，则自动打开对比（同样不自动启动第二个 pane）。
 
@@ -275,12 +276,12 @@ inflight: ref<Set<branch>>（防重复请求）
 全屏两栏（`.previews`，`grid-template-columns: 200px 1fr`，无卡片边框/圆角，高度吃满 `.project-workspace`）：
 
 - 左 `BranchPanel`：分支标题 + 计数 + 收起/刷新、搜索、分支卡（选中高亮）、底部提示 + `…` 菜单（Compare、Overview、Notes、刷新仓库）。
-- 右键分支卡弹出上下文菜单：置顶 / 取消置顶（`Project.pinnedBranch`，同一时间最多一个）。置顶分支排到列表最前并显示 pin 图标；动作乐观更新并 PATCH `/api/projects/:id`，失败回滚 + toast。底部提示被窄栏截断时，完整文案放在 `title` tooltip 里。
+- 右键分支卡弹出上下文菜单：复制分支名 / 置顶 / 取消置顶（`Project.pinnedBranches`，可置顶多个）。置顶分支按置顶顺序排在列表最前，每项显示 pin 图标，并用一条 `.branch-list-divider` 与其余分支分隔；动作乐观更新并 PATCH `/api/projects/:id` 的 `pinnedBranches` 数组，失败回滚 + toast。底部提示被窄栏截断时，完整文案放在 `title` tooltip 里。
 - 分支栏可折叠成 44px 竖排窄条（`.previews-branches-collapsed`，只留展开/刷新按钮与分支数）；折叠状态存 `localStorage` 的 `vercio:branch-panel-collapsed`，≤860px 堆叠布局下强制展开并隐藏收起按钮。
-- 中 `preview-stage`：工具栏（分支名/状态/实时或快照徽标/mode/prod 标签 + 设备切换 + Discussion + Settings）、断源 banner、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、Stop、部署 id、「分享预览」分支局域网链接）。
+- 中 `preview-stage`：工具栏（分支名/状态/实时或快照徽标/mode/prod 标签 + 设备切换 + 停止预览/重启预览 + Discussion + Settings）、断源 banner、1 或 2 个 `BrowserFrame`、底部状态条（sha/提交信息/作者/时间、diff 统计、框架、部署 id、「分享预览」分支局域网链接）。停止/重启只在当前分支部署 `ready` 时可用（重启期间保持禁用并显示「重启中…」）。
 - 「设置」按钮跳 `/p/:id/settings`；「概览 / 笔记」在左侧底部 `…` 菜单里。
 - 点击分支只切换视图；未运行的分支显示 idle 状态和「启动预览」按钮，不弹确认框。任何自动路径都不会 POST deploy。
-- 浏览器框右上角有「全屏预览」按钮：给 `.preview-frame-wrap` 加 `.is-focus`（`position: fixed; inset: 0`），只铺满**浏览器视口**，浏览器标签页和地址栏仍可见（不调用原生 Fullscreen API，不会占满显示器）。进入后只显示 iframe 页面，底部居中浮层 `退出全屏 Esc`；父页面监听 `keydown` 处理 Esc（点击 iframe 内部后焦点进入跨源文档、Esc 不再冒泡，此时用浮层按钮退出）。预览状态变为非 ready 时自动退出。
+- 浏览器框右上角有「全屏预览」按钮：给 `.preview-frame-wrap` 加 `.is-focus`（`position: fixed; inset: 0`），只铺满**浏览器视口**，浏览器标签页和地址栏仍可见（不调用原生 Fullscreen API，不会占满显示器）。进入后只显示 iframe 页面，底部居中浮层为两颗胶囊：`刷新` 与 `退出全屏 Esc`；父页面监听 `keydown` 处理 Esc（点击 iframe 内部后焦点进入跨源文档、Esc 不再冒泡，此时用浮层按钮退出）。预览状态变为非 ready 时自动退出。
 - 设备切换在 compare 时禁用；compare 的第二个 pane 用 `<select>` 选分支；未运行的分支在 pane 里直接给「启动预览」按钮。
 - 讨论面板（`previews-with-discussion`）展开为第三栏，打开时隐藏 compare 与底部左侧提交信息。
 - 空分支/加载/错误各有独立状态；宽度 ≤860px 时工作区改为上下堆叠并允许页面滚动。
